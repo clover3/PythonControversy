@@ -15,6 +15,7 @@ class ContrvWord(object):
         self.optimizer = config.optimizer
         self.current_lr = config.init_lr
         self.is_test = config.is_test
+        self.checkpoint_dir = config.checkpoint_dir
 
         # document as set of words
         self.doc_word = tf.placeholder(tf.int32, [None, self.doc_max_word,], "doc")
@@ -32,8 +33,12 @@ class ContrvWord(object):
         self.precision_op = dict()
         self.recall = dict()
         self.recall_op = dict()
-
+        self.log_loss = []
+        self.log = []
         self.we = None
+        self.print_state = config.show
+
+        self.out_we = None
 
 
     def build_network(self):
@@ -42,15 +47,11 @@ class ContrvWord(object):
         self.we = tf.Variable(initial_value=we_mat, dtype=tf.float32, trainable=True, name="word_embedding")
 
         doc_raw = tf.nn.embedding_lookup(self.we, self.doc_word)
-        print_shape("doc_raw", doc_raw)
-        print_shape("doc_rel", self.doc_rel)
         doc_contrv = tf.multiply(doc_raw, self.doc_rel)
-        print_shape("doc_contrv", doc_contrv)
 
         # --- possibly sigmoid here ----
         decision = tf.reduce_sum(doc_contrv, 1)
         decision = tf.reshape(decision, [self.batch_size,1,])
-        print_shape("decision", decision)
         return decision
 
     def binary_activate(self, decision):
@@ -101,6 +102,16 @@ class ContrvWord(object):
         self.measure(y, y_true, run_names)
         self.optimize(self.loss)
 
+        self.saver = tf.train.Saver({"we":self.we})
+
+    def get_best_valid(self, measure):
+        max_valid = 0
+        best_state = None
+        for state in self.log:
+            if state[measure] > max_valid:
+                max_valid = state[measure]
+                best_state = state
+        return best_state[measure]
 
 
     def data2batch(self, data):
@@ -144,13 +155,15 @@ class ContrvWord(object):
                 self.true_decision: batch[2],
             }
             (_, _, _, _,
+             self.out_we,
             loss) = self.sess.run([self.optim, self.accuracy_op["train"], self.recall_op["train"], self.precision_op["train"],
+                                   self.we,
                                                self.loss], feed_dict)
 
             cost += np.sum(loss)
 
             if debug :
-                self.logger.print("Something", "content here")
+                self.logger.print("we", self.out_we)
 
         accuracy, precision, recall = self.sess.run(
             [self.accuracy["train"],
@@ -189,10 +202,7 @@ class ContrvWord(object):
             train_acc_last = 0
             best_v_acc = 0
             for idx in range(self.nepoch):
-                print("Epohc {}".format(idx))
                 self.sess.run(tf.local_variables_initializer())
-                tf.global_variables_initializer()
-                print("I think i've done initilize")
 
                 self.logger.set_prefix("Epoch:{}\n".format(idx))
                 start = time.time()
@@ -226,7 +236,7 @@ class ContrvWord(object):
                 if len(self.log_loss) > 1 and self.log_loss[idx][1] > self.log_loss[idx - 1][1] * 0.9999:
                     self.current_lr = self.current_lr / 1.5
                     self.lr.assign(self.current_lr).eval()
-                if self.current_lr < 1e-5: break
+                if self.current_lr < 1e-6: break
 
                 if test_acc > best_v_acc:
                     best_v_acc = test_acc

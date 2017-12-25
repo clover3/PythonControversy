@@ -50,5 +50,12 @@ class LoggingUnit:
         self.id += 1
 
 
+def print_word_embedding(word2idx, we_arr):
+    we = we_arr[0]
 
+    print(type(we))
+
+    for word in word2idx.keys():
+        idx = word2idx[word]
+        print("{} {} {}".format(idx, word, we[idx]))
 

@@ -62,3 +62,4 @@ def activate_label(prob_tensor):
     bias_value = -0.5
     bias = tf.constant(bias_value, dtype=tf.float32, shape=prob_tensor.shape)
     return tf.round(tf.sigmoid(tf.add(prob_tensor, bias)))
+

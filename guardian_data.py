@@ -4,9 +4,9 @@ import pickle
 def load_data(corpus_path, label_path):
 
     data_cache = os.path.join("cache","data1.pickle")
-    if os.path.isfile(data_cache):
-        print("Loaded data from pickle")
-        return pickle.load(open(data_cache,"rb"))
+    #if os.path.isfile(data_cache):
+    #    print("Loaded data from pickle")
+    #    return pickle.load(open(data_cache,"rb"))
     print("Loading data")
 
     f = open(corpus_path, "r")
@@ -58,7 +58,7 @@ def load_data(corpus_path, label_path):
             missingCount = missingCount +1
     print("Missing {} article label".format(missingCount))
     voca_size = len(voca)+1
-    r = data, voca_size
+    r = data, voca_size, word2idx
     pickle.dump(r, open(data_cache, "wb"))
     return r
 
