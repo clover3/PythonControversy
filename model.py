@@ -6,7 +6,7 @@ import time
 
 
 class ContrvWord(object):
-    def __init__(self, config, sess):
+    def __init__(self, config, sess, emb_dict):
 
         self.doc_max_word = config.doc_max_word
         self.nwords = config.nwords
@@ -16,6 +16,10 @@ class ContrvWord(object):
         self.current_lr = config.init_lr
         self.is_test = config.is_test
         self.checkpoint_dir = config.checkpoint_dir
+
+        self.emb_dict = emb_dict
+
+        self.merge_method = "sum"
 
         # document as set of words
         self.doc_word = tf.placeholder(tf.int32, [None, self.doc_max_word,], "doc")
@@ -41,9 +45,31 @@ class ContrvWord(object):
         self.out_we = None
 
 
+    def merge_controversy(self, doc_contrv):
+        # doc_contrv : [batch_size , c_candidate , 1]
+        if self.merge_method == "sum":
+            decision = tf.reduce_sum(doc_contrv, 1)
+        elif self.merge_method == "max":
+            decision = tf.maximum(doc_contrv)
+        elif self.merge_method == "topk":
+            topk = tf.nn.top_k(doc_contrv, 10, False)
+            print_shape("topk", topk)
+            decision = tf.reduce_sum(topk, 1)
+
+        return decision
+
+    def init_embedding(self):
+        we_mat = np.full((self.nwords,), 0)
+        count = 0
+        for idx in self.emb_dict:
+            we_mat[idx] = self.emb_dict[idx]
+            count = count + 1
+        print("Using {} pre init".format(count))
+        return we_mat
+
     def build_network(self):
         # we : word embedding
-        we_mat = np.full((self.nwords,), 0)
+        we_mat = self.init_embedding()
         self.we = tf.Variable(initial_value=we_mat, dtype=tf.float32, trainable=True, name="word_embedding")
 
         doc_raw = tf.nn.embedding_lookup(self.we, self.doc_word)
@@ -85,8 +111,6 @@ class ContrvWord(object):
 
             with tf.control_dependencies([inc]):
                 self.optim = self.opt.apply_gradients(clipped_grads_and_vars)
-
-
 
     def build_model(self, run_names):
         print("Building Models")
