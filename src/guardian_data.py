@@ -1,8 +1,10 @@
 import os
 import json
 import pickle
+import math
+from clover_lib import *
 
-def load_data(corpus_path, label_path, format):
+def load_data(corpus_path, label_path, format, idx2wordPath=None, query2idx=None):
 
     data_cache = os.path.join("cache",format+".pickle")
     #if os.path.isfile(data_cache):
@@ -11,28 +13,51 @@ def load_data(corpus_path, label_path, format):
     print("Loading data")
 
     f = open(corpus_path, "r")
-    lines = f.readlines()
 
     def parse_line(line):
         if format == "unigram" or format == "bigram":
             tokens = line.split("\t")
             article_id = tokens[0]
             query = tokens[1]
-            relevance = float(tokens[2])
+            relevance = math.exp(float(tokens[2]))
             return article_id, query, relevance
         else:
             raise Exception("format is not expected one")
 
     voca = set()
     articles = dict()
-    for line in lines :
-        article_id, query, relevance = parse_line(line)
-        voca.add(query)
+    if not idx2wordPath:
+        lines = f.readlines()
+        for line in lines :
+            article_id, query, relevance = parse_line(line)
+            voca.add(query)
 
-        if article_id not in articles:
+            if article_id not in articles:
+                articles[article_id] = list()
+
+            articles[article_id].append((query, relevance))
+    else:
+        idx2word = dict()
+        for line in open(idx2wordPath, "r"):
+            tokens = line.strip().split(" ")
+            idx2word[int(tokens[1])] = tokens[0]
+        print("{} word voca".format(len(idx2word)))
+        print("Reading data...")
+        line = f.readline()
+        while line:
+            tokens= line.split("\t")
+            article_id = tokens[0]
             articles[article_id] = list()
+            count = int(tokens[1])
+            for i in range(count):
+                tokens = f.readline().split(" ")
+                query = idx2word[int(tokens[0])]
+                voca.add(query)
+                score = float(tokens[1])
+                articles[article_id].append((query, score))
 
-        articles[article_id].append((query, relevance))
+            line = f.readline()
+
 
     labels = dict()
     for line in open(label_path).readlines():
@@ -41,32 +66,41 @@ def load_data(corpus_path, label_path, format):
         score = int(tokens[1])
         labels[article_id] = score
 
-    idx = 1
-    query2idx = dict()
-    for query in voca:
-        query2idx[query] = idx
-        idx = idx +1
+    if query2idx is None:
+        print("Building query2idx")
+        idx = 1
+        query2idx = dict()
+        for query in voca:
+            query2idx[query] = idx
+            idx = idx + 1
 
     data = []
     missingCount = 0
+    wordMiss = FailCounter()
     for article_id in articles.keys():
         word_rel_list = articles[article_id]
         query_list = []
         rel_list = []
         for (query,rel) in word_rel_list:
-            query_list.append(query2idx[query])
-            rel_list.append(rel)
+            if query in query2idx:
+                query_list.append(query2idx[query])
+                rel_list.append(rel)
+                wordMiss.suc()
+            else:
+                wordMiss.fail()
 
         if article_id in labels:
             label = labels[article_id]
 
-            entry = (query_list, rel_list, label)
+            entry = (query_list, rel_list, label, article_id)
             data.append(entry)
         else:
             missingCount = missingCount +1
     print("Missing {} article label".format(missingCount))
+    print("{} of the words are missing".format(1-wordMiss.precision()))
     voca_size = len(voca)+1
     r = data, voca_size, query2idx
+
     pickle.dump(r, open(data_cache, "wb"))
     return r
 
@@ -109,5 +143,3 @@ def load_article(dir_path):
                 short_url = j_article['fields']['shortUrl']
                 articles.append((id, short_url, body_text))
     return articles
-
-pickle.dump(load_article("C:\work\Data\guardian data\list_crawl"), open("2016articles.pickle","wb"))

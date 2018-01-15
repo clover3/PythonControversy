@@ -19,7 +19,7 @@ class ContrvWord(object):
 
         self.emb_dict = emb_dict
 
-        self.merge_method = "sum"
+        self.merge_method = "max"
 
         # document as set of words
         self.doc_word = tf.placeholder(tf.int32, [None, self.doc_max_word,], "doc")
@@ -147,7 +147,7 @@ class ContrvWord(object):
 
         batch_supplier = Batch(self.batch_size)
         for test_case in data:
-            (word_list, rel_list, label) = test_case
+            (word_list, rel_list, label, article_id) = test_case
             word_list = fill_up(word_list, self.doc_max_word, 0)
             rel_list = fill_up(rel_list, self.doc_max_word, 0)
 
@@ -233,6 +233,8 @@ class ContrvWord(object):
                 train_loss, train_acc, train_precision, train_recall = self.train(train_data)
                 acc_delta = train_acc - train_acc_last
                 train_acc_last = train_acc
+                train_f  = 2*train_precision*train_recall/(train_precision+train_recall+0.001)
+
 
                 test_loss, test_acc, test_precision, test_recall = self.test(test_data)
                 test_f  = 2*test_precision*test_recall/(test_precision+test_recall+0.001)
@@ -247,6 +249,7 @@ class ContrvWord(object):
                     'epoch': idx,
                     'learning_rate': self.current_lr,
                     'train_accuracy': train_acc,
+                    'train_f':train_f,
                     'acc_delta': acc_delta,
                     'valid_accuracy': test_acc,
                     'valid_f': test_f,

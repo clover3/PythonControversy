@@ -16,12 +16,19 @@ def split_train_test(all_data, n_fold=3):
         folds.append(fold_size*i)
 
     r = []
+    f = open("test_split.txt","w")
     for test_idx in range(n_fold):
-        train = all_data[0:test_idx] + all_data[test_idx+fold_size:]
-        test  = all_data[test_idx:test_idx+fold_size]
+        mid1 = test_idx*fold_size
+        mid2 = (test_idx+1)*fold_size
+        train = all_data[0:mid1] + all_data[mid2:]
+        test  = all_data[mid1:mid2]
         print("test_idx = {} train len = {} test len = {}".format(test_idx, len(train), len(test)))
         r.append((train, test))
-
+        for entry in test:
+            article_id = entry[3]
+            f.write(article_id + "\t")
+        f.write("\n")
+    f.close()
     return r
 
 

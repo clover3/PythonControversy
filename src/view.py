@@ -54,8 +54,10 @@ def print_word_embedding(word2idx, we_arr):
     we = we_arr[0]
 
     print(type(we))
-
+    f = open("word_controversy.txt", "w")
     for word in word2idx.keys():
         idx = word2idx[word]
-        print("{} {} {}".format(idx, word, we[idx]))
+        #print("{} {} {}".format(idx, word, we[idx]))
+        f.write("{}\t{}\n".format(word, we[idx]))
+    f.close()
 

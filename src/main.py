@@ -1,3 +1,7 @@
+# This file requires
+# 1) RelevanceFile
+# 2) Article controversy judge.
+
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'
 
@@ -20,18 +24,28 @@ flags.DEFINE_boolean("show", True, "print progress [False]")
 flags.DEFINE_string("checkpoint_dir", "checkpoint_dir", "checkpoint_dir")
 flags.DEFINE_boolean("use_init", True, "True to use unigram for initial embedding")
 
+
+# Unigram Test set : RelevanceWord.txt + Label.txt
+# Bigram Test set  : RelevanceCorpusBigram.txt + Label.txt
+# D Supervision :
+
 if "__main__" == __name__ :
     random.seed(0)
 
-    query_type = "bigram"
+    query_type = "sparse"
     print("Controversy Learner Query={}".format(query_type))
-    if query_type == "unigram":
-        corpus_path = os.path.join("data", "RelevanceWord.txt")
-    elif query_type == "bigram":
-        corpus_path = os.path.join("data", "RelevanceCorpusBigram.txt")
-    label_path = os.path.join("data", "Label.txt")
+    corpus_path_test= os.path.join("data", "RelevanceWord.txt")
+    corpus_path = os.path.join("data", "ws_word_relevance.txt")
+    compressed = True
+    #corpus_path = os.path.join("data", "RelevanceCorpusBigram.txt")
+    #corpus_path = ""
+    label_path_test = os.path.join("data", "Label.txt")
+    label_path = os.path.join("data","PseudoJudgement.txt")
+    idx2word_path = os.path.join("data", "ws_word_id.txt")
 
-    data, voca_size, word2idx = load_data(corpus_path, label_path, query_type)  # [unigram] [bigram]
+    data, voca_size, word2idx = load_data(corpus_path, label_path, query_type, idx2word_path)  # [unigram] [bigram]
+    test_data, _, _ = load_data(corpus_path_test, label_path_test, "unigram", None, word2idx)  # [unigram] [bigram]
+
     flags.DEFINE_integer("nwords", voca_size, "number of words in corpus")
     runs = split_train_test(data, 3)
 
@@ -50,7 +64,9 @@ if "__main__" == __name__ :
             if flags.FLAGS.is_test:
                 print("Test not implemented")
             else: #train
-                model.run(train_data, valid_data)
+                #model.run(train_data, valid_data)
+                model.run(train_data, test_data)
+
                 best_accuracy = model.get_best_valid('valid_accuracy')
                 best_f = model.get_best_valid('valid_f')
                 summary.append("best_accuract : {}\t best_f : {}".format(best_accuracy, best_f))
@@ -58,6 +74,6 @@ if "__main__" == __name__ :
     for s in summary:
         print(s)
     pickle.dump(we_arr, open("we_arr.pickle", "wb"))
-    #print_word_embedding(word2idx, we_arr)
+    print_word_embedding(word2idx, we_arr)
 
     play_process_completed()
