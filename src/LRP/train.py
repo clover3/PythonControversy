@@ -9,6 +9,7 @@ from tensorflow.contrib import learn
 
 from LRP import data_helpers
 from LRP.cnn import TextCNN
+from LRP.lrp import LRPManager
 
 # Parameters
 # ==================================================
@@ -77,6 +78,7 @@ if "__main__" == __name__ :
     print("Train/Dev split: {:d}/{:d}".format(len(y_train), len(y_dev)))
 
 
+
     # Training
     # ==================================================
 
@@ -90,11 +92,21 @@ if "__main__" == __name__ :
                 sequence_length=x_train.shape[1],
                 num_classes=y_train.shape[1],
                 vocab_size=len(vocab_processor.vocabulary_),
+                batch_size=FLAGS.batch_size,
                 embedding_size=FLAGS.embedding_dim,
                 filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
                 num_filters=FLAGS.num_filters,
                 l2_reg_lambda=FLAGS.l2_reg_lambda)
-
+            lrp = LRPManager(sess,
+                             cnn=cnn,
+                             sequence_length=x_train.shape[1],
+                             num_classes=y_train.shape[1],
+                             vocab_size=len(vocab_processor.vocabulary_),
+                             batch_size=FLAGS.batch_size,
+                             embedding_size=FLAGS.embedding_dim,
+                             filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
+                             num_filters=FLAGS.num_filters,
+                             )
             # Define Training procedure
             global_step = tf.Variable(0, name="global_step", trainable=False)
             optimizer = tf.train.AdamOptimizer(1e-3)
@@ -171,10 +183,12 @@ if "__main__" == __name__ :
                 step, summaries, loss, accuracy = sess.run(
                     [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
                     feed_dict)
+                lrp.run(feed_dict)
                 time_str = datetime.datetime.now().isoformat()
                 print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
                 if writer:
                     writer.add_summary(summaries, step)
+
 
             # Generate batches
             batches = data_helpers.batch_iter(
@@ -182,6 +196,7 @@ if "__main__" == __name__ :
             # Training loop. For each batch...
             for batch in batches:
                 x_batch, y_batch = zip(*batch)
+                dev_step(x_dev, y_dev, writer=dev_summary_writer)
                 train_step(x_batch, y_batch)
                 current_step = tf.train.global_step(sess, global_step)
                 if current_step % FLAGS.evaluate_every == 0:
