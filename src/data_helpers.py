@@ -3,6 +3,9 @@ import re
 import itertools
 from collections import Counter
 from LRP.data_side import *
+from gensim.models.word2vec import Word2Vec
+import os
+from random import shuffle
 
 def clean_str(string):
     """
@@ -25,12 +28,31 @@ def clean_str(string):
     return string.strip().lower()
 
 
+def load_word2vec(vocab_processor, embedding_dim):
+    path = os.path.join("data", "word2vec")
+    model = Word2Vec.load(path)
+
+    initW = np.random.uniform(-0.25, 0.25, (len(vocab_processor.vocabulary_), embedding_dim))
+    total = len(vocab_processor.vocabulary_._mapping.keys())
+    cnt = 0
+    for word in vocab_processor.vocabulary_._mapping.keys():
+        if word in model.wv:
+            v = model.wv[word]
+            assert (v.size == embedding_dim)
+            cnt = cnt+ 1
+            idx = vocab_processor.vocabulary_.get(word)
+            initW[idx] = v
+    print("voca : {}/{} initialized".format(cnt, total))
+    return initW
+
+
 def data_split(pos_path, neg_path):
     # 223 -> 74*3
     # 74*2 + alpha = 300
     #  = 300
     train_size = 300
     side_articles = load_side_articles()
+    shuffle(side_articles)
     guardian_pos_text = list(open(pos_path, "r", encoding="utf-8").readlines())
     guardian_neg_text = list(open(neg_path, "r", encoding="utf-8").readlines())
 
@@ -93,3 +115,44 @@ def batch_iter(data, batch_size, num_epochs, shuffle=True):
             start_index = batch_num * batch_size
             end_index = min((batch_num + 1) * batch_size, data_size)
             yield shuffled_data[start_index:end_index]
+
+def load_answer(test_data):
+    issue_path = "C:\work\Data\isidewith\pickle\issue_with_article.pickle"
+    issues = pickle.load(open(issue_path , "rb"))
+    aritlce_path = "C:\work\Data\isidewith\pickle\\article_plain.pickle"
+    plain_articles = pickle.load(open(aritlce_path, "rb"))
+    topic_convert = {
+        'Trident Nuclear Weapons Programme':'Nuclear Weapon',
+        'Deportation of Suspected Terrorists':'Suspected Terrorists',
+    }
+
+    answer_dict = dict()
+    for issue in issues:
+        topic_title = issue['title']
+        if topic_title in topic_convert:
+            topic_title = topic_convert[topic_title]
+
+        articles = issue['articles']
+        if len(articles) <= 4:
+            continue
+
+        for title, link in articles:
+            if link.startswith("/poll/"):
+                continue
+            try:
+                text = plain_articles[link]
+                if topic_title.lower() in text.lower():
+                    answer_dict[link] = topic_title
+            except KeyError:
+                ""
+    answer = []
+
+    count =0
+    for link, text in test_data:
+        if link in answer_dict:
+            answer.append(answer_dict[link])
+        else:
+            count = count + 1
+            answer.append(None)
+    print("{} of {} not found ".format(count, len(test_data)))
+    return answer

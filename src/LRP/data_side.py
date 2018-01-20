@@ -20,3 +20,13 @@ def extract_text(articleList):
     for (link, text) in articleList:
         data.append(text)
     return data
+
+
+
+def inspect_articles():
+    data = load_side_articles()
+    for (link, text) in data:
+        print(link)
+        print(text)
+        dummy = input()
+
