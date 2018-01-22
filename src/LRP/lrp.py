@@ -24,7 +24,6 @@ class LRPManager(object):
     def eval_r(self, scores, predictions, dense_W, dense_b, pooledArg, maxPoolOutput, word_emb, filters):
         print("evaluating reverse relevance")
         # Update r_score
-        print_shape("self.score:", scores)
         input_batch_size, num_classes = scores.shape
         r_k = np.zeros(shape=[input_batch_size, self.num_classes])
         for i in range(input_batch_size):
@@ -34,9 +33,6 @@ class LRPManager(object):
                     r_k[i, c] = scores[i, c]
                 else:
                     r_k[i, c] = -scores[i, c]
-        print_shape("dense_W:", dense_W)
-        print_shape("dense_b:", dense_b)
-        print("r_k sum : {}".format(r_k.sum(axis=1).sum(axis=0)))
         # maxPoolOutput : [batch , filter_size]
         z_jk = np.zeros(shape=[input_batch_size, self.num_filters_total, self.num_classes])
         for batch in range(input_batch_size):
@@ -52,7 +48,6 @@ class LRPManager(object):
                     r_jk[batch, j, k] = z_jk[batch, j, k] * r_k[batch, k] / z_jk_sum[batch, k]
 
         r_j = np.sum(r_jk, axis=2) # [ batch * num_filters_total)
-        print("r_j sum : {}".format(r_j.sum(axis=1).sum(axis=0)))
         assert( np.count_nonzero(r_j[0, :]) == self.num_filters_total)
 
         r_jt = np.zeros([input_batch_size, self.num_filters_total, self.sequence_length])
@@ -61,8 +56,6 @@ class LRPManager(object):
                 t = pooledArg[batch, 0, j]
                 r_jt[batch, j, t] = r_j[batch, j]
         assert( np.count_nonzero(r_jt.sum(axis=2).sum(axis=1)) == input_batch_size)
-        print("r_jt sum : {}".format(r_jt.sum(axis=2).sum(axis=1).sum(axis=0)))
-        print("getting z[j,t,tau]")
         z_jttau = np.zeros([input_batch_size, self.num_filters_total, self.sequence_length, max(self.filter_sizes)])
         j = 0
         #word_emb : [batch, sequence, dim]
@@ -81,7 +74,6 @@ class LRPManager(object):
                             z_jttau[batch, j, t, tau] = np.dot(x,a) + (filter_b[filter_idx]+0.01)/(filter_size)
 
                 j += 1
-        print("getting r[t]")
         z_jttau_sum = z_jttau.sum(axis=3) # [batch_size * num_filters_total * sequence_length]
         assert (np.count_nonzero(z_jttau_sum.sum(axis=2).sum(axis=1)) == input_batch_size)
         # char at t to filter j
@@ -103,7 +95,6 @@ class LRPManager(object):
                         assert( 1-portion_sum < 0.00001)
                     j+= 1
         r_t = r_tj.sum(axis=2) # [ input_batch_size , sequence_length]
-        print("r_t sum : {}".format(r_t.sum(axis=1).sum(axis=0)))
         assert(np.count_nonzero(r_t.sum(axis=1)) == input_batch_size)
         return r_t
 

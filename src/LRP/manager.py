@@ -12,6 +12,9 @@ from clover_lib import *
 
 PATH_SPLIT2_TRAINED = "C:\\work\\Code\\PythonControversy\\src\\LRP\\runs\\1516259569\\checkpoints\\model-900"
 PATH_FILTER_SHORT = "C:\work\Code\PythonControversy\src\LRP\\runs\\1516350455\checkpoints\model-900"
+PATH_CLEAN_DATA = "C:\work\Code\PythonControversy\src\LRP\\runs\\1516424273\checkpoints\model-900"
+
+PATH_SPLIT3 = "C:\work\Code\PythonControversy\src\LRP\\runs\\1516597480\checkpoints\model-200"
 
 class Manager():
     def __init__(self, num_checkpoints, dropout_keep_prob,
@@ -80,7 +83,7 @@ class Manager():
     # test accuracy drop after removing tokens
     def word_removing(self, sess, lrp_manager, x, y):
         saver = tf.train.Saver(tf.global_variables())
-        model_path = PATH_FILTER_SHORT
+        model_path = PATH_CLEAN_DATA
         saver.restore(sess, model_path)
 
         correct_x, correct_y = self.collect_correct(sess, lrp_manager.cnn, x, y)
@@ -202,7 +205,7 @@ class Manager():
                 [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy],
                 feed_dict)
             time_str = datetime.datetime.now().isoformat()
-            print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+            print("Train {}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
             train_summary_writer.add_summary(summaries, step)
 
         def dev_step(x_batch, y_batch, writer=None):
@@ -218,7 +221,7 @@ class Manager():
                 [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
                 feed_dict)
             time_str = datetime.datetime.now().isoformat()
-            print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+            print("Dev {}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
             if writer:
                 writer.add_summary(summaries, step)
 
@@ -239,11 +242,134 @@ class Manager():
                 path = saver.save(sess, checkpoint_prefix, global_step=current_step)
                 print("Saved model checkpoint to {}\n".format(path))
 
+    def heatmap(self, sess, lrp_manager, test_data, answer, vocab_processor):
+        saver = tf.train.Saver(tf.global_variables())
+        model_path = PATH_CLEAN_DATA
+        saver.restore(sess, model_path)
+        def transform(text):
+            return list(vocab_processor.transform(text))
+        links, list_test_text = zip(*test_data)
+        list_test_text = list([data_helpers.clean_str(x) for x in list_test_text])
+        x_test = np.array(transform(list_test_text))
+        y = np.array([[0,1]] * len(list_test_text))
+        list_test_text = list(vocab_processor.reverse(x_test))
+
+        feed_dict = {
+            lrp_manager.cnn.input_x: x_test,
+            lrp_manager.cnn.input_y: y,
+            lrp_manager.cnn.dropout_keep_prob: 1.0
+        }
+
+        r_t = pickle.load(open("r_t.pickle", "rb"))
+        #r_t = lrp_manager.run(feed_dict)
+        #pickle.dump(r_t, open("r_t.pickle", "wb"))
+
+        heatmaps = []
+        for i, batch in enumerate(r_t):
+            heatmap = []
+            text_tokens = list_test_text[i].split(" ")
+            for raw_index, value in np.ndenumerate(batch):
+                index = raw_index[0]
+                heatmap.append((text_tokens[index], value))
+            heatmaps.append((answer[i], heatmap))
+        pickle.dump(heatmaps, open("heatmap.pickle","wb"))
+
+    def train_and_phrase(self, sess, lrp_manager, test_data, answer, vocab_processor):
+        split2_frame = "C:\work\Code\PythonControversy\src\LRP\\runs\\1516603701\checkpoints\model-{}"
+        def transform(text):
+            return list(vocab_processor.transform(text))
+        links, list_test_text = zip(*test_data)
+        list_test_text = list([data_helpers.clean_str(x) for x in list_test_text])
+        x_test = np.array(transform(list_test_text))
+        y = np.array([[0,1]] * len(list_test_text))
+        list_test_text = list(vocab_processor.reverse(x_test))
+        def get_precision(x,y):
+            feed_dict = {
+                lrp_manager.cnn.input_x: x,
+                lrp_manager.cnn.input_y: y,
+                lrp_manager.cnn.dropout_keep_prob: 1.0
+            }
+            [accuracy] = sess.run(
+                [lrp_manager.cnn.accuracy, ],
+                feed_dict)
+            return accuracy
+
+        for progress in range(400, 900, 100):
+            path = split2_frame.format(progress)
+            saver = tf.train.Saver(tf.global_variables())
+            saver.restore(sess, path)
+
+            feed_dict = {
+                lrp_manager.cnn.input_x: x_test,
+                lrp_manager.cnn.input_y: y,
+                lrp_manager.cnn.dropout_keep_prob: 1.0
+            }
+            accuracy = get_precision(x_test, y)
+            print("y/n Accuracy : ", end="")
+            print(accuracy)
+
+            def collect_correct_indice(sess, cnn, x, y):
+                feed_dict = {
+                    cnn.input_x: x,
+                    cnn.input_y: y,
+                    cnn.dropout_keep_prob: 1.0
+                }
+
+                [prediction] = sess.run(
+                    [cnn.predictions, ],
+                    feed_dict)
+
+                indice = []
+                y_idx = np.argmax(y, axis=1)
+                for i, _ in enumerate(x):
+                    if prediction[i] == y_idx[i]:
+                        indice.append(i)
+                return indice
+
+            correct_indice = collect_correct_indice(sess, lrp_manager.cnn, x_test, y)
+
+            r_t = lrp_manager.run(feed_dict)
+            count = FailCounter()
+            k = 10 # candiate to select
+            for i, batch in enumerate(r_t):
+                if i not in correct_indice:
+                    continue
+                if answer[i] is None:
+                    continue
+                phrase_len = len(answer[i].split(" "))
+                candidates = []
+                for raw_index, value in np.ndenumerate(batch):
+                    index = raw_index[0]
+                    if index + phrase_len >= batch.shape[0]:
+                        break
+                    assert (batch[index] == value)
+                    window = batch[index:index+phrase_len]
+                    s = sum(window)
+                    candidates.append((s, index))
+                candidates.sort(key=lambda x:x[0], reverse=True)
+                answer_tokens = set(answer[i].lower().split(" "))
+                text_tokens = list_test_text[i].split(" ")
+                match = False
+                for (value, last_index) in candidates[:k]:
+                    end = last_index + 1
+                    begin = end - phrase_len
+                    sys_answer = text_tokens[begin:end]
+                    if set(sys_answer) == answer_tokens:
+                        match = True
+                if match:
+                    count.suc()
+                else:
+                    count.fail()
+            print("Precision : {}".format(count.precision()))
+
+    # model_path = "C:\\work\\Code\\PythonControversy\\src\\LRP\\runs\\1516167942\\checkpoints\\model-500"
+
+
     # answer : list of tokens
     def test_phrase(self, sess, lrp_manager, test_data, answer, vocab_processor):
         saver = tf.train.Saver(tf.global_variables())
         #model_path = "C:\\work\\Code\\PythonControversy\\src\\LRP\\runs\\1516167942\\checkpoints\\model-500"
-        model_path = PATH_FILTER_SHORT
+        model_path = PATH_SPLIT3
         saver.restore(sess, model_path)
 
         def transform(text):
@@ -303,12 +429,12 @@ class Manager():
         rand_count = FailCounter()
         k = 10 # candiate to select
         for i, batch in enumerate(r_t):
-            print("--------------")
+            #print("--------------")
             if i not in correct_indice:
-                print("Wrong")
+                #print("Wrong")
                 continue
             if answer[i] is None:
-                print("No answer in text")
+                #print("No answer in text")
                 continue
             phrase_len = len(answer[i].split(" "))
             candidates = []
@@ -322,7 +448,7 @@ class Manager():
                 candidates.append((s, index))
             candidates.sort(key=lambda x:x[0], reverse=True)
 
-            print("Collect: "+answer[i])
+            #print("Collect: "+answer[i])
             answer_tokens = set(answer[i].lower().split(" "))
             text_tokens = list_test_text[i].split(" ")
             match = False
@@ -331,7 +457,7 @@ class Manager():
                 end = last_index + 1
                 begin = end - phrase_len
                 sys_answer = text_tokens[begin:end]
-                print("{}-{} /{}: {}[{}]{}".format(begin, end, value, text_tokens[begin-1], " ".join(sys_answer), text_tokens[end]) )
+                #print("{}-{} /{}: {}[{}]{}".format(begin, end, value, text_tokens[begin-1], " ".join(sys_answer), text_tokens[end]) )
                 if set(sys_answer) == answer_tokens:
                     match = True
 
@@ -348,10 +474,10 @@ class Manager():
                 rand_count.suc()
             else:
                 rand_count.fail()
-            print("")
+            #print("")
 
             max_i = np.argmax(batch, axis=0)
-            print("Max : {} at {} ({})".format(batch[max_i], max_i, text_tokens[max_i]))
+            #print("Max : {} at {} ({})".format(batch[max_i], max_i, text_tokens[max_i]))
 
         print("Precision : {}".format(count.precision()))
         print("Precision[Random] : {}".format(rand_count.precision()))

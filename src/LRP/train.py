@@ -16,7 +16,7 @@ from LRP.manager import Manager
 # ==================================================
 
 # Data loading params
-tf.flags.DEFINE_float("dev_sample_percentage", .1, "Percentage of the training data to use for validation")
+tf.flags.DEFINE_float("dev_sample_percentage", .2, "Percentage of the training data to use for validation")
 tf.flags.DEFINE_string("positive_data_file", "./data/rt-polaritydata/rt-polarity.pos", "Data source for the positive data.")
 tf.flags.DEFINE_string("negative_data_file", "./data/rt-polaritydata/rt-polarity.neg", "Data source for the negative data.")
 
@@ -30,9 +30,9 @@ tf.flags.DEFINE_float("l2_reg_lambda", 0.0, "L2 regularization lambda (default: 
 # Training parameters
 tf.flags.DEFINE_integer("batch_size", 64, "Batch Size (default: 64)")
 tf.flags.DEFINE_integer("num_epochs", 100, "Number of training epochs (default: 200)")
-tf.flags.DEFINE_integer("evaluate_every", 100, "Evaluate model on dev set after this many steps (default: 100)")
-tf.flags.DEFINE_integer("checkpoint_every", 100, "Save model after this many steps (default: 100)")
-tf.flags.DEFINE_integer("num_checkpoints", 5, "Number of checkpoints to store (default: 5)")
+tf.flags.DEFINE_integer("evaluate_every", 10, "Evaluate model on dev set after this many steps (default: 100)")
+tf.flags.DEFINE_integer("checkpoint_every", 10, "Save model after this many steps (default: 100)")
+tf.flags.DEFINE_integer("num_checkpoints", 100, "Number of checkpoints to store (default: 5)")
 # Misc Parameters
 tf.flags.DEFINE_boolean("allow_soft_placement", True, "Allow device soft device placement")
 tf.flags.DEFINE_boolean("log_device_placement", False, "Log placement of ops on devices")
@@ -54,7 +54,7 @@ if "__main__" == __name__ :
     # Load data
     print("Loading data...")
     splits = data_helpers.data_split(pos_path, neg_path)
-    x_text, y, test_data = splits[0]
+    x_text, y, test_data = splits[1]
 
     # Build vocabulary
     max_document_length = max([len(x.split(" ")) for x in x_text])
@@ -125,7 +125,7 @@ if "__main__" == __name__ :
                               checkpoint_every=FLAGS.checkpoint_every,
                               initW=initW
                               )
-            todo = "phr_test"
+            todo = "train"
             if todo == "lrp_test":
                 #manager.show_lrp(sess, lrp, x_dev, y_dev, x_dev_text)
                 manager.word_removing(sess, lrp, x_dev[:30], y_dev[:30])
@@ -133,5 +133,11 @@ if "__main__" == __name__ :
                 # test_data : list(link, text)
                 answer = data_helpers.load_answer(test_data)
                 manager.test_phrase(sess, lrp, test_data, answer, vocab_processor)
+            elif todo == "heatmap":
+                answer = data_helpers.load_answer(test_data)
+                manager.heatmap(sess, lrp, test_data, answer, vocab_processor)
+            elif todo == "train2phrase":
+                answer = data_helpers.load_answer(test_data)
+                manager.train_and_phrase(sess, lrp, test_data, answer, vocab_processor)
             else:
                 manager.train(sess, cnn, x_train, x_dev, y_train, y_dev)

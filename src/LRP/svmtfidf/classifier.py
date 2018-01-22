@@ -121,7 +121,7 @@ class Model:
         tokens = [self.tokenize(s) for s in data]
         X = self.transform(tokens)
         y_pred = self.clf.predict(X)
-        weights = np.multiply(X, self.clf.coef_)
+        weights = np.multiply(X, self.clf.coef_[0])
 
         suc = FailCounter()
         rand_suc = FailCounter()
@@ -131,7 +131,6 @@ class Model:
             if answer is None:
                 continue
             answer_token = answer.lower().split(" ")
-            print(answer)
 
             candidates = self.gen_phrase(tokens[i], weights[i], len(answer_token), 10)
             rand_candi = self.rand_gen_phrase(tokens[i], len(answer_token), 10)
@@ -157,28 +156,41 @@ if __name__ == "__main__":
     neg_path = "..\\data\\guardianNC.txt"
     # Load data
     print("Loading data...")
+    validate = True
     splits = data_helpers.data_split(pos_path, neg_path)
-    x_text, y, test_data = splits[0]
-    np.random.seed(10)
-    shuffle_indices = np.random.permutation(np.arange(len(y)))
-    x_text = list(np.array(x_text)[shuffle_indices])
-    y = y[shuffle_indices]
-    y = np.argmax(y, axis=1)
+    for split in splits:
+        x_text, y, test_data = split
+        np.random.seed(10)
+        shuffle_indices = np.random.permutation(np.arange(len(y)))
+        x_text = list(np.array(x_text)[shuffle_indices])
+        y = y[shuffle_indices]
+        y = np.argmax(y, axis=1)
 
-    hold_out = 0.2
-    split_idx = int(len(x_text) * (1- hold_out))
+        if not validate:
+            svm_phrase = Model(x_text, y)
+            svm_phrase.train(x_text, y)
+            print("Accuracy on train data: {}".format(svm_phrase.accuracy(x_text, y)))
 
-    train_x = x_text[:split_idx]
-    train_y = y[:split_idx]
-    dev_x = x_text[split_idx:]
-    dev_y = y[split_idx:]
+            answers = data_helpers.load_answer(test_data)
+            linkl, test_text = zip(*test_data)
+            print("Accuracy on contrv data: {}".format(svm_phrase.accuracy(test_text, np.ones([len(test_text)]))))
+            svm_phrase.test_phrase(test_text, y, answers)
 
-    svm_phrase = Model(x_text, y)
-    svm_phrase.train(train_x, train_y)
-    print("Accuracy on train data: {}".format(svm_phrase.accuracy(train_x, train_y)))
-    print("Accuracy on dev data: {}".format(svm_phrase.accuracy(dev_x, dev_y)))
+        else:
+            hold_out = 0.2
+            split_idx = int(len(x_text) * (1- hold_out))
 
-    answers = data_helpers.load_answer(test_data)
-    linkl, test_text = zip(*test_data)
-    print("Accuracy on contrv data: {}".format(svm_phrase.accuracy(test_text, np.ones([len(test_text)])) ))
-    svm_phrase.test_phrase(test_text, y, answers)
+            train_x = x_text[:split_idx]
+            train_y = y[:split_idx]
+            dev_x = x_text[split_idx:]
+            dev_y = y[split_idx:]
+
+            svm_phrase = Model(x_text, y)
+            svm_phrase.train(train_x, train_y)
+            print("Accuracy on train data: {}".format(svm_phrase.accuracy(train_x, train_y)))
+            print("Accuracy on dev data: {}".format(svm_phrase.accuracy(dev_x, dev_y)))
+
+            answers = data_helpers.load_answer(test_data)
+            linkl, test_text = zip(*test_data)
+            print("Accuracy on contrv data: {}".format(svm_phrase.accuracy(test_text, np.ones([len(test_text)])) ))
+            svm_phrase.test_phrase(test_text, y, answers)
