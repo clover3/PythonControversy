@@ -158,6 +158,27 @@ class Model:
 
             return True
 
+
+        def very_meaningful(phrase):
+            token_phrase = phrase.split(" ")
+            if all_stopword(phrase):
+                return False
+            for i, word in enumerate(token_phrase):
+                try:
+                    if i==0:
+                        continue
+                    prefix = " ".join(token_phrase[:i])
+                    cur_phrase = " ".join(token_phrase[:i+1])
+                    tf = voca[word]
+                    p_b = tf / total_words
+                    p_b_bar_a = phrase_f[cur_phrase] / phrase_f[prefix]
+                    if p_b_bar_a < p_b * 10:
+                        return False
+                except ZeroDivisionError:
+                    raise
+
+            return True
+
         candidate_phrase = []
         for phrase in phrase_f.keys():
             if phrase_df[phrase]> 3 and meaningful(phrase):
@@ -260,6 +281,24 @@ class Model:
         print("accuracy : {}".format(suc.precision()))
         print("Total case : {}".format(suc.total()))
 
+def fivefold(x_text, y):
+    n_fold = 5
+    size = len(x_text)
+    fold_size = int(size / n_fold)
+    for test_idx in range(n_fold):
+        mid1 = test_idx*fold_size
+        mid2 = (test_idx+1)*fold_size
+
+        train_x = x_text[:mid1] + x_text[mid2:]
+        train_y = np.concatenate([y[:mid1],y[mid2:]], axis=0)
+        dev_x = x_text[mid1:mid2]
+        dev_y = y[mid1:mid2]
+        svm_phrase = Model()
+        svm_phrase.train(train_x, train_y)
+        print("Accuracy on train data: {}".format(svm_phrase.accuracy(train_x, train_y)))
+        print("Accuracy on dev data: {}".format(svm_phrase.accuracy(dev_x, dev_y)))
+
+
 
 if __name__ == "__main__":
     random.seed(0)
@@ -268,7 +307,7 @@ if __name__ == "__main__":
     neg_path = "..\\LRP\\data\\guardianNC.txt"
     # Load data
     print("Loading data...")
-    validate = False
+    validate = True
     splits = data_helpers.data_split(pos_path, neg_path)
     for split in splits:
         x_text, y, test_data = split
@@ -289,18 +328,4 @@ if __name__ == "__main__":
             svm_phrase.test_phrase(test_text, y, answers)
 
         else:
-            hold_out = 0.2
-            split_idx = int(len(x_text) * (1 - hold_out))
-
-            train_x = x_text[:split_idx]
-            train_y = y[:split_idx]
-            dev_x = x_text[split_idx:]
-            dev_y = y[split_idx:]
-            svm_phrase = Model()
-            svm_phrase.train(train_x, train_y)
-            print("Accuracy on train data: {}".format(svm_phrase.accuracy(train_x, train_y)))
-            print("Accuracy on dev data: {}".format(svm_phrase.accuracy(dev_x, dev_y)))
-
-            answers = data_helpers.load_answer(test_data)
-            linkl, test_text = zip(*test_data)
-            svm_phrase.test_phrase(test_text, y, answers)
+            fivefold(x_text, y)

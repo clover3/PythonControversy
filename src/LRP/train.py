@@ -54,7 +54,7 @@ if "__main__" == __name__ :
     # Load data
     print("Loading data...")
     splits = data_helpers.data_split(pos_path, neg_path)
-    x_text, y, test_data = splits[1]
+    x_text, y, test_data = splits[0]
 
     # Build vocabulary
     max_document_length = max([len(x.split(" ")) for x in x_text])
@@ -125,10 +125,10 @@ if "__main__" == __name__ :
                               checkpoint_every=FLAGS.checkpoint_every,
                               initW=initW
                               )
-            todo = "train"
+            todo = "phr_test"
             if todo == "lrp_test":
-                #manager.show_lrp(sess, lrp, x_dev, y_dev, x_dev_text)
-                manager.word_removing(sess, lrp, x_dev[:30], y_dev[:30])
+                manager.show_lrp(sess, lrp, x_dev, y_dev, x_dev_text)
+                #manager.word_removing(sess, lrp, x_dev[:30], y_dev[:30])
             elif todo == "phr_test":
                 # test_data : list(link, text)
                 answer = data_helpers.load_answer(test_data)

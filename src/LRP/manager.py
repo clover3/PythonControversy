@@ -15,6 +15,7 @@ PATH_FILTER_SHORT = "C:\work\Code\PythonControversy\src\LRP\\runs\\1516350455\ch
 PATH_CLEAN_DATA = "C:\work\Code\PythonControversy\src\LRP\\runs\\1516424273\checkpoints\model-900"
 
 PATH_SPLIT3 = "C:\work\Code\PythonControversy\src\LRP\\runs\\1516597480\checkpoints\model-200"
+PATH_UNKNOWN = "C:\\work\\Code\\PythonControversy\\src\\LRP\\runs\\1516167942\\checkpoints\\model-500"
 
 class Manager():
     def __init__(self, num_checkpoints, dropout_keep_prob,
@@ -31,12 +32,13 @@ class Manager():
     def show_lrp(self, sess, lrp_manager, x, y, text):
         saver = tf.train.Saver(tf.global_variables())
         print("Restoring model")
-        model_path = "C:\\work\\Code\\PythonControversy\\src\\LRP\\runs\\1516167942\\checkpoints\\model-500"
+        model_path = "C:\work\Code\PythonControversy\src\LRP\\runs\\1516655846\checkpoints\model-60"
+        model_path = PATH_SPLIT3
         saver.restore(sess, model_path)
 
         feed_dict = {
-            lrp_manager.cnn.input_x: x[:30],
-            lrp_manager.cnn.input_y: y[:30],
+            lrp_manager.cnn.input_x: x[:10],
+            lrp_manager.cnn.input_y: y[:10],
             lrp_manager.cnn.dropout_keep_prob: 1.0
         }
 
@@ -275,7 +277,7 @@ class Manager():
         pickle.dump(heatmaps, open("heatmap.pickle","wb"))
 
     def train_and_phrase(self, sess, lrp_manager, test_data, answer, vocab_processor):
-        split2_frame = "C:\work\Code\PythonControversy\src\LRP\\runs\\1516603701\checkpoints\model-{}"
+        split2_frame = "C:\work\Code\PythonControversy\src\LRP\\runs\\1516655846\checkpoints\model-{}"
         def transform(text):
             return list(vocab_processor.transform(text))
         links, list_test_text = zip(*test_data)
@@ -294,7 +296,9 @@ class Manager():
                 feed_dict)
             return accuracy
 
-        for progress in range(400, 900, 100):
+
+        summary = []
+        for progress in range(10, 150, 10):
             path = split2_frame.format(progress)
             saver = tf.train.Saver(tf.global_variables())
             saver.restore(sess, path)
@@ -361,6 +365,10 @@ class Manager():
                 else:
                     count.fail()
             print("Precision : {}".format(count.precision()))
+            summary.append((progress, accuracy, count.precision() ))
+
+        for progress, accuracy, precion in summary:
+            print("{}\t{}\t{}\t".format(progress, accuracy, precion))
 
     # model_path = "C:\\work\\Code\\PythonControversy\\src\\LRP\\runs\\1516167942\\checkpoints\\model-500"
 
@@ -448,16 +456,22 @@ class Manager():
                 candidates.append((s, index))
             candidates.sort(key=lambda x:x[0], reverse=True)
 
-            #print("Collect: "+answer[i])
+            print("Collect: "+answer[i])
             answer_tokens = set(answer[i].lower().split(" "))
             text_tokens = list_test_text[i].split(" ")
             match = False
             rand_match = False
+
+            def get_text(begin,end):
+                if begin < 0 :
+                    begin =0
+                return " ".join(text_tokens[begin:end])
+
             for (value, last_index) in candidates[:k]:
                 end = last_index + 1
                 begin = end - phrase_len
                 sys_answer = text_tokens[begin:end]
-                #print("{}-{} /{}: {}[{}]{}".format(begin, end, value, text_tokens[begin-1], " ".join(sys_answer), text_tokens[end]) )
+                print("{}-{} /{}: {}[{}]{}".format(begin, end, value, get_text(begin-3, begin), " ".join(sys_answer), get_text(end, end+3)) )
                 if set(sys_answer) == answer_tokens:
                     match = True
 
