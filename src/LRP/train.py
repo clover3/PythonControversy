@@ -53,91 +53,108 @@ if "__main__" == __name__ :
     neg_path = "data\\guardianNC.txt"
     # Load data
     print("Loading data...")
-    splits = data_helpers.data_split(pos_path, neg_path)
-    x_text, y, test_data = splits[0]
+    #splits = data_helpers.data_split(pos_path, neg_path)
+    #pickle.dump(splits, open("splits.pickle", "wb"))
+    splits = pickle.load(open("splits.pickle", "rb"))
+    for split_no, split in enumerate(splits):
+        print("Split {}".format(split_no))
+        x_text, y, test_data = splits[split_no]
 
-    # Build vocabulary
-    max_document_length = max([len(x.split(" ")) for x in x_text])
-    vocab_processor = learn.preprocessing.VocabularyProcessor(max_document_length)
-    x = np.array(list(vocab_processor.fit_transform(x_text)))
+        # Build vocabulary
+        max_document_length = max([len(x.split(" ")) for x in x_text])
+        #vocab_processor = learn.preprocessing.VocabularyProcessor(max_document_length)
+        vocab_processor = pickle.load(open("vocabproc{}.pickle".format(split_no), "rb"))
+        x = np.array(list(vocab_processor.fit_transform(x_text)))
+        y = np.array(y)
+
+        # Randomly shuffle data
+        np.random.seed(10)
+        shuffle_indices = np.random.permutation(np.arange(len(y)))
+        x_shuffled = x[shuffle_indices]
+        y_shuffled = y[shuffle_indices]
+
+        text_x_shuffled = []
+        for index in np.nditer(shuffle_indices):
+            text_x_shuffled.append(x_text[index])
 
 
-    # Randomly shuffle data
-    np.random.seed(10)
-    shuffle_indices = np.random.permutation(np.arange(len(y)))
-    x_shuffled = x[shuffle_indices]
-    y_shuffled = y[shuffle_indices]
+        # Split train/test set
+        # TODO: This is very crude, should use cross-validation
+        dev_sample_index = -1 * int(FLAGS.dev_sample_percentage * float(len(y)))
+        x_train, x_dev = x_shuffled[:dev_sample_index], x_shuffled[dev_sample_index:]
+        y_train, y_dev = y_shuffled[:dev_sample_index], y_shuffled[dev_sample_index:]
 
-    text_x_shuffled = []
-    for index in np.nditer(shuffle_indices):
-        text_x_shuffled.append(x_text[index])
+        x_dev_text = text_x_shuffled[dev_sample_index:]
+        pickle.dump(x_dev_text, open("dev_x_text.pickle","wb"))
+        del x, y, x_shuffled, y_shuffled
 
+        #print("Vocabulary Size: {:d}".format(len(vocab_processor.vocabulary_)))
+        #print("Train/Dev split: {:d}/{:d}".format(len(y_train), len(y_dev)))
 
-    # Split train/test set
-    # TODO: This is very crude, should use cross-validation
-    dev_sample_index = -1 * int(FLAGS.dev_sample_percentage * float(len(y)))
-    x_train, x_dev = x_shuffled[:dev_sample_index], x_shuffled[dev_sample_index:]
-    y_train, y_dev = y_shuffled[:dev_sample_index], y_shuffled[dev_sample_index:]
+        initW = data_helpers.load_word2vec(vocab_processor, FLAGS.embedding_dim)
 
-    x_dev_text = text_x_shuffled[dev_sample_index:]
-    pickle.dump(x_dev_text, open("dev_x_text.pickle","wb"))
-    del x, y, x_shuffled, y_shuffled
+        # Training
+        # ==================================================
 
-    print("Vocabulary Size: {:d}".format(len(vocab_processor.vocabulary_)))
-    print("Train/Dev split: {:d}/{:d}".format(len(y_train), len(y_dev)))
+        with tf.Graph().as_default():
+            session_conf = tf.ConfigProto(
+              allow_soft_placement=FLAGS.allow_soft_placement,
+              log_device_placement=FLAGS.log_device_placement)
+            sess = tf.Session(config=session_conf)
+            with sess.as_default():
+                cnn = TextCNN(
+                    sequence_length=x_train.shape[1],
+                    num_classes=y_train.shape[1],
+                    vocab_size=len(vocab_processor.vocabulary_),
+                    batch_size=FLAGS.batch_size,
+                    embedding_size=FLAGS.embedding_dim,
+                    filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
+                    num_filters=FLAGS.num_filters,
+                    l2_reg_lambda=FLAGS.l2_reg_lambda)
+                lrp = LRPManager(sess,
+                                 cnn=cnn,
+                                 sequence_length=x_train.shape[1],
+                                 num_classes=y_train.shape[1],
+                                 vocab_size=len(vocab_processor.vocabulary_),
+                                 batch_size=FLAGS.batch_size,
+                                 embedding_size=FLAGS.embedding_dim,
+                                 filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
+                                 num_filters=FLAGS.num_filters,
+                                 )
 
-    initW = data_helpers.load_word2vec(vocab_processor, FLAGS.embedding_dim)
-
-    # Training
-    # ==================================================
-
-    with tf.Graph().as_default():
-        session_conf = tf.ConfigProto(
-          allow_soft_placement=FLAGS.allow_soft_placement,
-          log_device_placement=FLAGS.log_device_placement)
-        sess = tf.Session(config=session_conf)
-        with sess.as_default():
-            cnn = TextCNN(
-                sequence_length=x_train.shape[1],
-                num_classes=y_train.shape[1],
-                vocab_size=len(vocab_processor.vocabulary_),
-                batch_size=FLAGS.batch_size,
-                embedding_size=FLAGS.embedding_dim,
-                filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
-                num_filters=FLAGS.num_filters,
-                l2_reg_lambda=FLAGS.l2_reg_lambda)
-            lrp = LRPManager(sess,
-                             cnn=cnn,
-                             sequence_length=x_train.shape[1],
-                             num_classes=y_train.shape[1],
-                             vocab_size=len(vocab_processor.vocabulary_),
-                             batch_size=FLAGS.batch_size,
-                             embedding_size=FLAGS.embedding_dim,
-                             filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
-                             num_filters=FLAGS.num_filters,
-                             )
-
-            manager = Manager(num_checkpoints=FLAGS.num_checkpoints,
-                              dropout_keep_prob=FLAGS.dropout_keep_prob,
-                              batch_size=FLAGS.batch_size,
-                              num_epochs=FLAGS.num_epochs,
-                              evaluate_every=FLAGS.evaluate_every,
-                              checkpoint_every=FLAGS.checkpoint_every,
-                              initW=initW
-                              )
-            todo = "phr_test"
-            if todo == "lrp_test":
-                manager.show_lrp(sess, lrp, x_dev, y_dev, x_dev_text)
-                #manager.word_removing(sess, lrp, x_dev[:30], y_dev[:30])
-            elif todo == "phr_test":
-                # test_data : list(link, text)
-                answer = data_helpers.load_answer(test_data)
-                manager.test_phrase(sess, lrp, test_data, answer, vocab_processor)
-            elif todo == "heatmap":
-                answer = data_helpers.load_answer(test_data)
-                manager.heatmap(sess, lrp, test_data, answer, vocab_processor)
-            elif todo == "train2phrase":
-                answer = data_helpers.load_answer(test_data)
-                manager.train_and_phrase(sess, lrp, test_data, answer, vocab_processor)
-            else:
-                manager.train(sess, cnn, x_train, x_dev, y_train, y_dev)
+                manager = Manager(num_checkpoints=FLAGS.num_checkpoints,
+                                  dropout_keep_prob=FLAGS.dropout_keep_prob,
+                                  batch_size=FLAGS.batch_size,
+                                  num_epochs=FLAGS.num_epochs,
+                                  evaluate_every=FLAGS.evaluate_every,
+                                  checkpoint_every=FLAGS.checkpoint_every,
+                                  initW=initW
+                                  )
+                todo = "test1510"
+                if todo == "lrp_test":
+                    manager.show_lrp(sess, lrp, x_dev, y_dev, x_dev_text)
+                    #manager.word_removing(sess, lrp, x_dev[:30], y_dev[:30])
+                elif todo == "phrase_test":
+                    # test_data : list(link, text)
+                    answer = data_helpers.load_answer(test_data)
+                    manager.test_phrase(sess, lrp, test_data, answer, vocab_processor, split_no, 1)
+                elif todo== "test1510":
+                    answer = data_helpers.load_answer(test_data)
+                    pickle.dump(answer, open("answer{}.pickle".format(split_no), "wb"))
+                    summary = []
+                    for k in [1,]:
+                        rate = manager.test_phrase(sess, lrp, test_data, answer, vocab_processor, split_no, k)
+                        summary.append("{}\t{}".format(k, rate))
+                    for line in summary:
+                        print(line)
+                elif todo == "heatmap":
+                    answer = data_helpers.load_answer(test_data)
+                    manager.heatmap(sess, lrp, test_data, answer, vocab_processor)
+                elif todo == "train2phrase":
+                    answer = data_helpers.load_answer(test_data)
+                    manager.train_and_phrase(sess, lrp, test_data, answer, vocab_processor)
+                elif todo == "demo_sentence":
+                    answer = data_helpers.load_answer(test_data)
+                    manager.sentence(sess, lrp, test_data, answer, vocab_processor, split_no)
+                else:
+                    manager.train(sess, cnn, x_train, x_dev, y_train, y_dev)

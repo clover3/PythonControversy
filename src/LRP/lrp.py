@@ -29,7 +29,7 @@ class LRPManager(object):
         for i in range(input_batch_size):
             idx = predictions[i]
             for c in range(num_classes):
-                if idx == c:
+                if 1 == c:
                     r_k[i, c] = scores[i, c]
                 else:
                     r_k[i, c] = -scores[i, c]
