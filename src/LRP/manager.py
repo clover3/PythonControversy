@@ -207,42 +207,54 @@ class Manager():
                 [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy],
                 feed_dict)
             time_str = datetime.datetime.now().isoformat()
-            print("Train {}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+            #print("\rTrain : step {}, loss {:g}, acc {:g}".format(step, loss, accuracy))
             train_summary_writer.add_summary(summaries, step)
 
-        def dev_step(x_batch, y_batch, writer=None):
+        def dev_step(x_dev, y_dev, writer=None):
             """
             Evaluates model on a dev set
             """
-            feed_dict = {
-                cnn.input_x: x_batch,
-                cnn.input_y: y_batch,
-                cnn.dropout_keep_prob: 1.0
-            }
-            step, summaries, loss, accuracy = sess.run(
-                [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
-                feed_dict)
+            batches = data_helpers.batch_iter(
+                list(zip(x_dev, y_dev)), self.batch_size, 1)
+            accuracy_l = []
+            for batch in batches:
+                x_batch, y_batch = zip(*batch)
+                feed_dict = {
+                    cnn.input_x: x_batch,
+                    cnn.input_y: y_batch,
+                    cnn.dropout_keep_prob: 1.0
+                }
+                step, summaries, loss, accuracy = sess.run(
+                    [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
+                    feed_dict)
+                #print("dev[batch] accuracy : {}".format(accuracy))
+                accuracy_l.append(accuracy * len(y_batch))
+            accuracy = sum(accuracy_l) / len(y_dev)
             time_str = datetime.datetime.now().isoformat()
-            print("Dev {}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+            print("acc {:g}".format(accuracy))
             if writer:
                 writer.add_summary(summaries, step)
+            return accuracy
 
         # Generate batches
         batches = data_helpers.batch_iter(
             list(zip(x_train, y_train)), self.batch_size, self.num_epochs)
         # Training loop. For each batch...
+        num_batches_per_epoch = int((len(y_train) - 1) / self.batch_size) + 1
+        evaluate_batch = self.evaluate_every * len(y_train) / self.batch_size
+        print("batch per epoch {}".format(num_batches_per_epoch))
         for batch in batches:
             x_batch, y_batch = zip(*batch)
-            dev_step(x_dev, y_dev, writer=dev_summary_writer)
             train_step(x_batch, y_batch)
             current_step = tf.train.global_step(sess, global_step)
             if current_step % self.evaluate_every == 0:
-                print("\nEvaluation:")
+                print("\nEvaluation: step {}".format(current_step))
                 dev_step(x_dev, y_dev, writer=dev_summary_writer)
-                print("")
             if current_step % self.checkpoint_every == 0:
                 path = saver.save(sess, checkpoint_prefix, global_step=current_step)
                 print("Saved model checkpoint to {}\n".format(path))
+        accuracy = dev_step(x_dev, y_dev, writer=dev_summary_writer)
+        return accuracy
 
     def heatmap(self, sess, lrp_manager, test_data, answer, vocab_processor):
         saver = tf.train.Saver(tf.global_variables())
