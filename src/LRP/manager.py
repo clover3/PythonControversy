@@ -1,21 +1,30 @@
+import collections
 import datetime
 import os
 import pickle
 import random
 import time
+import nltk
 
 import numpy as np
 import tensorflow as tf
-
+from nltk.stem.snowball import SnowballStemmer
+from copy import deepcopy
 import data_helpers
 from clover_lib import *
 
 PATH_SPLIT2_TRAINED = "C:\\work\\Code\\PythonControversy\\src\\LRP\\runs\\1516259569\\checkpoints\\model-900"
 PATH_FILTER_SHORT = "C:\work\Code\PythonControversy\src\LRP\\runs\\1516350455\checkpoints\model-900"
-PATH_CLEAN_DATA = "C:\work\Code\PythonControversy\src\LRP\\runs\\1516424273\checkpoints\model-900"
+PATH_SPLIT_0_CLEAN_DATA = "C:\work\Code\PythonControversy\src\LRP\\runs\\1516424273\checkpoints\model-900"
 
 PATH_SPLIT3 = "C:\work\Code\PythonControversy\src\LRP\\runs\\1516597480\checkpoints\model-200"
 PATH_UNKNOWN = "C:\\work\\Code\\PythonControversy\\src\\LRP\\runs\\1516167942\\checkpoints\\model-500"
+PATH_SPLIT_UNK = "C:\\work\\Code\\PythonControversy\\src\\LRP\\runs\\1516922375\\checkpoints\\model-120"
+PATH_SPLIT1 = "C:\\work\\Code\\PythonControversy\\src\\LRP\\runs\\1516947422\\checkpoints\\model-110"
+
+
+def get_model_path(id, epoch):
+    return "C:\\work\\Code\\PythonControversy\\src\\LRP\\runs\\{}\\checkpoints\\model-{}".format(id, epoch)
 
 class Manager():
     def __init__(self, num_checkpoints, dropout_keep_prob,
@@ -29,11 +38,10 @@ class Manager():
         self.initW = initW
 
     #
-    def show_lrp(self, sess, lrp_manager, x, y, text):
+    def show_lrp(self, sess, lrp_manager, x, y, text, split_no):
         saver = tf.train.Saver(tf.global_variables())
         print("Restoring model")
-        model_path = "C:\work\Code\PythonControversy\src\LRP\\runs\\1516655846\checkpoints\model-60"
-        model_path = PATH_SPLIT3
+        model_path = self.get_model_path_by_split(split_no)
         saver.restore(sess, model_path)
 
         feed_dict = {
@@ -85,7 +93,7 @@ class Manager():
     # test accuracy drop after removing tokens
     def word_removing(self, sess, lrp_manager, x, y):
         saver = tf.train.Saver(tf.global_variables())
-        model_path = PATH_CLEAN_DATA
+        model_path = PATH_SPLIT_0_CLEAN_DATA
         saver.restore(sess, model_path)
 
         correct_x, correct_y = self.collect_correct(sess, lrp_manager.cnn, x, y)
@@ -258,7 +266,7 @@ class Manager():
 
     def heatmap(self, sess, lrp_manager, test_data, answer, vocab_processor):
         saver = tf.train.Saver(tf.global_variables())
-        model_path = PATH_CLEAN_DATA
+        model_path = PATH_SPLIT_0_CLEAN_DATA
         saver.restore(sess, model_path)
         def transform(text):
             return list(vocab_processor.transform(text))
@@ -274,9 +282,9 @@ class Manager():
             lrp_manager.cnn.dropout_keep_prob: 1.0
         }
 
-        r_t = pickle.load(open("r_t.pickle", "rb"))
-        #r_t = lrp_manager.run(feed_dict)
-        #pickle.dump(r_t, open("r_t.pickle", "wb"))
+        #r_t = pickle.load(open("r_t.pickle", "rb"))
+        r_t = lrp_manager.run(feed_dict)
+        pickle.dump(r_t, open("r_t.pickle", "wb"))
 
         heatmaps = []
         for i, batch in enumerate(r_t):
@@ -384,12 +392,119 @@ class Manager():
 
     # model_path = "C:\\work\\Code\\PythonControversy\\src\\LRP\\runs\\1516167942\\checkpoints\\model-500"
 
+    def get_model_path_by_split(self, split_no):
+        if split_no == 0:
+            #model_path = PATH_SPLIT_0_CLEAN_DATA
+            model_path = get_model_path(1517013309,150)
+            model_path = get_model_path(1517198610, 700)
+        elif split_no == 1:
+            #model_path = PATH_SPLIT1
+            model_path = get_model_path(1517013721, 230)
+            model_path = get_model_path(1517204236, 800)
+        elif split_no == 2:
+            #model_path = PATH_UNKNOWN
+            model_path = get_model_path(1517029400, 200)
+            model_path = get_model_path(1517194730, 300)
+        return model_path
 
-    # answer : list of tokens
-    def test_phrase(self, sess, lrp_manager, test_data, answer, vocab_processor):
+    def sentence(self, sess, lrp_manager, test_data, answer, vocab_processor, split_no):
         saver = tf.train.Saver(tf.global_variables())
         #model_path = "C:\\work\\Code\\PythonControversy\\src\\LRP\\runs\\1516167942\\checkpoints\\model-500"
-        model_path = PATH_SPLIT3
+        model_path = self.get_model_path_by_split(split_no)
+        saver.restore(sess, model_path)
+        def transform(text):
+            return list(vocab_processor.transform(text))
+
+
+        links, list_text_tokens = zip(*test_data)
+        raw_text_tokens = deepcopy(list_text_tokens)
+        list_test_text = list([data_helpers.clean_str(x) for x in list_text_tokens])
+        x_test = np.array(transform(list_test_text))
+        y = np.array([[0,1]] * len(list_test_text))
+        rev_test_text = list(vocab_processor.reverse(x_test))
+
+
+        feed_dict = {
+            lrp_manager.cnn.input_x: x_test,
+            lrp_manager.cnn.input_y: y,
+            lrp_manager.cnn.dropout_keep_prob: 1.0
+        }
+        stemmer = SnowballStemmer("english", ignore_stopwords=True)
+        rt_pickle = "r_t{}.pickle".format(split_no)
+        if os.path.exists(rt_pickle):
+            r_t = pickle.load(open(rt_pickle, "rb"))
+        else:
+            r_t = lrp_manager.run(feed_dict)
+        pickle.dump(r_t, open(rt_pickle, "wb"))
+
+
+        candidate_phrase = data_helpers.load_phrase(split_no)
+        candidate_phrase = set(candidate_phrase)
+        for i, batch in enumerate(r_t):
+            low_text = raw_text_tokens[i].lower()
+            print(answer[i])
+            print("-----raw text : "+ raw_text_tokens[i][:200])
+            def has_dot_before(cursor):
+                try:
+                    for j in range(1,5):
+                        idx = cursor - j
+                        if idx < 0 :
+                            break
+                        if raw_text_tokens[i][idx] == '.':
+                            return True
+                except IndexError:
+                    print(cursor)
+                    raise
+
+                return False
+            text_tokens = rev_test_text[i].split(" ")
+            cursor = 0
+            line_no = 0
+            sentence_rel = 0
+            max_idx = 0
+            max_rel = 0
+            last_idx =0
+            for raw_index, value in np.ndenumerate(batch):
+                index = raw_index[0]
+                next_idx= low_text.find(text_tokens[index], cursor)
+                #print(next_idx, end="")
+                sentence_rel = sentence_rel + value
+                if next_idx > len(raw_text_tokens[i]):
+                    break
+                if has_dot_before(next_idx):
+                    av_score = sentence_rel / (next_idx-last_idx)
+                    if av_score > max_rel:
+                        max_rel = av_score
+                        max_idx = line_no
+                        print("Max {}".format(line_no))
+                    line_no = line_no + 1
+                    sentence_rel = 0
+                    print(raw_text_tokens[i][last_idx:next_idx])
+                    last_idx = next_idx
+                    print("Score :{}".format(av_score))
+                #print(text_tokens[index], end=" ")
+                if next_idx > 0:
+                    cursor = next_idx
+
+
+
+    # answer : list of tokens
+    def test_phrase(self, sess, lrp_manager, test_data, answer, vocab_processor, split_no, k):
+        saver = tf.train.Saver(tf.global_variables())
+        #model_path = "C:\\work\\Code\\PythonControversy\\src\\LRP\\runs\\1516167942\\checkpoints\\model-500"
+        if split_no == 0:
+            #model_path = PATH_SPLIT_0_CLEAN_DATA
+            #model_path = get_model_path(1517013309,150)
+            model_path = get_model_path(1517198610, 700)
+        elif split_no == 1:
+            #model_path = PATH_SPLIT1
+            #model_path = get_model_path(1517013721, 230)
+            model_path = get_model_path(1517204236, 800)
+        elif split_no == 2:
+            #model_path = PATH_UNKNOWN
+            #model_path = get_model_path(1517029400, 200)
+            model_path = get_model_path(1517194730, 300)
+
         saver.restore(sess, model_path)
 
         def transform(text):
@@ -411,8 +526,8 @@ class Manager():
                 feed_dict)
             return accuracy
         accuracy = get_precision(x_test, y)
-        print("Accuracy : ", end="")
-        print(accuracy)
+        #print("Prediction accuarcy : ", end="")
+        #print(accuracy)
 
         def collect_correct_indice(sess, cnn, x, y):
             feed_dict = {
@@ -440,71 +555,97 @@ class Manager():
             lrp_manager.cnn.dropout_keep_prob: 1.0
         }
 
-        #r_t = pickle.load(open("r_t.pickle", "rb"))
-        r_t = lrp_manager.run(feed_dict)
-        pickle.dump(r_t, open("r_t.pickle", "wb"))
+        candidate_phrase = data_helpers.load_phrase(split_no)
+        candidate_phrase = set(candidate_phrase)
 
-        res = []
+        assert("taxes" in candidate_phrase)
+
+        stemmer = SnowballStemmer("english", ignore_stopwords=True)
+        rt_pickle = "r_t{}.pickle".format(split_no)
+        if os.path.exists(rt_pickle):
+            r_t = pickle.load(open(rt_pickle, "rb"))
+        else:
+            r_t = lrp_manager.run(feed_dict)
+        pickle.dump(r_t, open(rt_pickle, "wb"))
         count = FailCounter()
         rand_count = FailCounter()
-        k = 10 # candiate to select
+        middle_scores = []
         for i, batch in enumerate(r_t):
-            #print("--------------")
+            f_wrong = False
             if i not in correct_indice:
-                #print("Wrong")
-                continue
+                f_wrong = True
+                #continue
             if answer[i] is None:
                 #print("No answer in text")
                 continue
-            phrase_len = len(answer[i].split(" "))
-            candidates = []
-            for raw_index, value in np.ndenumerate(batch):
-                index = raw_index[0]
-                if index + phrase_len >= batch.shape[0]:
-                    break
-                assert (batch[index] == value)
-                window = batch[index:index+phrase_len]
-                s = sum(window)
-                candidates.append((s, index))
-            candidates.sort(key=lambda x:x[0], reverse=True)
+            #phrase_len = len(answer[i].split(" "))
 
-            print("Collect: "+answer[i])
-            answer_tokens = set(answer[i].lower().split(" "))
+            answer_str = " ".join([stemmer.stem(token) for token in answer[i].lower().split(" ")])
+            print("Correct: " + answer[i] + "({})".format(answer_str))
             text_tokens = list_test_text[i].split(" ")
+            pos_tags = nltk.pos_tag(text_tokens)
+            candidates = []
+
+
+            def window_sum(window):
+                bonus = max(window) * ( len(window)-1)
+                return (sum(window) +  bonus * 0.4) / len(window)
+            phrase_len = len(answer[i].split(" "))
+            for raw_index, value in np.ndenumerate(batch):
+                for phrase_len in range(1,3):
+                    index = raw_index[0]
+                    if index + phrase_len >= batch.shape[0]:
+                        break
+                    assert (batch[index] == value)
+                    window = batch[index:index+phrase_len]
+                    is_noun = 'NN' in pos_tags[index+phrase_len-1][1]
+                    s = sum(window)
+                    text = " ".join(text_tokens[index:index+phrase_len])
+                    if text in candidate_phrase and is_noun:
+                    #if is_noun:
+                        candidates.append((s, index, index+phrase_len, window))
+            candidates.sort(key=lambda x:x[0], reverse=True)
+            ranking_dict = collections.Counter()
+            info_dict = dict()
+
+            middle_score = []
+            for value, begin, end, window in candidates:
+                #end = begin + phrase_len
+                sys_answer = " ".join([stemmer.stem(t) for t in text_tokens[begin:end]])
+                ranking_dict[sys_answer] += value
+                info_dict[sys_answer] = (begin,end,window)
+                #sys_answer = " ".join([stemmer.stem(t) for t in text.split(" ")])
+                middle_score.append((value, sys_answer))
+            middle_scores.append(middle_score)
             match = False
-            rand_match = False
 
-            def get_text(begin,end):
+            def get_text(begin, end):
+                st = begin
                 if begin < 0 :
-                    begin =0
-                return " ".join(text_tokens[begin:end])
+                    st = 0
+                return " ".join(text_tokens[st:end])
 
-            for (value, last_index) in candidates[:k]:
-                end = last_index + 1
-                begin = end - phrase_len
-                sys_answer = text_tokens[begin:end]
-                print("{}-{} /{}: {}[{}]{}".format(begin, end, value, get_text(begin-3, begin), " ".join(sys_answer), get_text(end, end+3)) )
-                if set(sys_answer) == answer_tokens:
+            #for (value, begin) in candidates[:k]:
+            for key, value in ranking_dict.most_common(k):
+                begin,end,window = info_dict[key]
+                sys_answer = " ".join([stemmer.stem(t) for t in text_tokens[begin:end]])
+                sys_answer_no_stem = " ".join(text_tokens[begin:end])
+                print("{}-{} /{}: {}[{}]{}".format(begin, end, value, get_text(begin-3, begin), sys_answer_no_stem, get_text(end, end+3)) )
+                #for idx in range(end-begin):
+                #    print("{0:.2f} ".format(window[idx]))
+                if sys_answer == answer_str:
                     match = True
 
-                rand_begin = random.randint(0, 500)
-                rand_end = rand_begin + phrase_len
-                rand_answer = text_tokens[rand_begin:rand_end]
-                if set(rand_answer) == answer_tokens:
-                    rand_match = True
             if match:
                 count.suc()
             else:
                 count.fail()
-            if rand_match:
-                rand_count.suc()
-            else:
-                rand_count.fail()
             #print("")
 
             max_i = np.argmax(batch, axis=0)
             #print("Max : {} at {} ({})".format(batch[max_i], max_i, text_tokens[max_i]))
 
-        print("Precision : {}".format(count.precision()))
-        print("Precision[Random] : {}".format(rand_count.precision()))
-        return res
+        pickle.dump(middle_scores, open("middle.score{}.pickle".format(split_no), "wb"))
+        #print("Precision : {}".format(count.precision()))
+        #print("Precision[Random] : {}".format(rand_count.precision()))
+        return count.precision()
