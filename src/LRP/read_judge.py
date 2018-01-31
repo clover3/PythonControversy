@@ -19,7 +19,9 @@ def stem_phrase(phrase):
     return " ".join([stem(token) for token in phrase.split(" ")])
 
 def merge_eval(pickle_form, split_no):
-    middle_scores = pickle.load(open(pickle_form.format(split_no), "rb"))
+    path = pickle_form.format(split_no)
+    print(path)
+    middle_scores = pickle.load(open(path, "rb"))
     answers = pickle.load(open("answer{}.pickle".format(split_no), "rb"))
     print(len(middle_scores))
     assert (len(answers) == len(middle_scores))
@@ -58,10 +60,10 @@ def merge_eval(pickle_form, split_no):
     for k in range(1,21):
         suc = sum(1 if i <k else 0 for i in success_at)
         score[k] = suc
-        print("Suc@{}\t{}".format(k, suc/ total))
+        #print("Suc@{}\t{}".format(k, suc/ total))
     return score
 
-pickle_form = "middle_cnn_1\\middle.score{}.pickle"
+pickle_form = "middle_cnn_5\\middle.score{}.pickle"
 
 runs = []
 for split_no in range(3):

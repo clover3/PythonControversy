@@ -130,9 +130,9 @@ if "__main__" == __name__ :
                                   checkpoint_every=FLAGS.checkpoint_every,
                                   initW=initW
                                   )
-                todo = "test1510"
+                todo = "lrp_test"
                 if todo == "lrp_test":
-                    manager.show_lrp(sess, lrp, x_dev, y_dev, x_dev_text)
+                    manager.show_lrp(sess, lrp, x_dev, y_dev, x_dev_text, split_no)
                     #manager.word_removing(sess, lrp, x_dev[:30], y_dev[:30])
                 elif todo == "phrase_test":
                     # test_data : list(link, text)
@@ -142,7 +142,7 @@ if "__main__" == __name__ :
                     answer = data_helpers.load_answer(test_data)
                     pickle.dump(answer, open("answer{}.pickle".format(split_no), "wb"))
                     summary = []
-                    for k in [1,]:
+                    for k in [10,]:
                         rate = manager.test_phrase(sess, lrp, test_data, answer, vocab_processor, split_no, k)
                         summary.append("{}\t{}".format(k, rate))
                     for line in summary:

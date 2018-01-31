@@ -103,7 +103,7 @@ def merge_eval(split_no):
 
         cnn_success_at.append(rank_at_1)
         svm_success_at.append(rank_at_2)
-        #print("{}\t{}\t{}".format(answer, rank_at_1, rank_at_2))
+        print("{}\t{}\t{}".format(answer, rank_at_1, rank_at_2))
         sum_list.sort(key=lambda x: x[1], reverse=True)
         #print("--- final -----")
         suc_idx = 51

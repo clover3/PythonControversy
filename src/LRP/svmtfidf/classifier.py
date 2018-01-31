@@ -91,13 +91,14 @@ class Model:
         rand_range = text_len-phrase_len
         response = []
         for idx in range(rand_range):
-            if len(response) == k:
-                break
-            idx = np.random.randint(0, rand_range)
+            for gap in range(1, 3):
+                if len(response) == k:
+                    break
+                idx = np.random.randint(0, rand_range)
 
-            phrase = " ".join(text_tokens[idx : idx+phrase_len])
-            if phrase in self.good_phrase and is_noun(idx):
-                response.append(phrase)
+                phrase = " ".join(text_tokens[idx : idx+gap])
+                if phrase in self.good_phrase and is_noun(idx):
+                    response.append(phrase)
         return response
 
     def gen_phrase(self, text_tokens, weight, phrase_len, k):
@@ -170,7 +171,9 @@ class Model:
             responses.append(candidates)
             rand_candi = self.rand_gen_phrase(tokens[i], len(answer_token), k)
             responsesF.append(rand_candi)
-
+            print("answer ---: "+answer)
+            for item in rand_candi:
+                print(item)
             def match(tokens):
                 systen_answer = " ".join([self.stemmer.stem(t) for t in tokens])
                 return systen_answer == answer_str
@@ -218,7 +221,7 @@ if __name__ == "__main__":
             #print("Accuracy on contrv data: {}".format(svm_phrase.accuracy(test_text, y_test)))
             result = []
             rand_result = []
-            for k in [1000]:
+            for k in [10]:
                 rate, rate_rand = svm_phrase.test_phrase(test_text, y_test, answers, k)
                 result.append(rate)
                 rand_result.append(rate_rand)
