@@ -442,11 +442,11 @@ class Manager():
         candidate_phrase = set(candidate_phrase)
         for i, batch in enumerate(r_t):
             low_text = raw_text_tokens[i].lower()
-            print(answer[i])
-            print("-----raw text : "+ raw_text_tokens[i][:200])
+            print("\\section{" +answer[i] + "}")
+            #print("-----raw text : "+ raw_text_tokens[i][:200])
             def has_dot_before(cursor):
                 try:
-                    for j in range(1,5):
+                    for j in range(1,3):
                         idx = cursor - j
                         if idx < 0 :
                             break
@@ -464,6 +464,7 @@ class Manager():
             max_idx = 0
             max_rel = 0
             last_idx =0
+            sentences = []
             for raw_index, value in np.ndenumerate(batch):
                 index = raw_index[0]
                 next_idx= low_text.find(text_tokens[index], cursor)
@@ -476,12 +477,16 @@ class Manager():
                     if av_score > max_rel:
                         max_rel = av_score
                         max_idx = line_no
-                        print("Max {}".format(line_no))
+                        #print("Max {}".format(line_no))
                     line_no = line_no + 1
                     sentence_rel = 0
-                    print(raw_text_tokens[i][last_idx:next_idx])
+                    sentence = raw_text_tokens[i][last_idx:next_idx]
+                    if av_score > 0.01:
+                        print("\hl{" + sentence.strip() + "}")
+                    else:
+                        print(sentence.strip())
                     last_idx = next_idx
-                    print("Score :{}".format(av_score))
+                    #print("Score :{0:.2f}".format(av_score))
                 #print(text_tokens[index], end=" ")
                 if next_idx > 0:
                     cursor = next_idx

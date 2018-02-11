@@ -6,7 +6,7 @@ import random
 import numpy as np
 import tensorflow as tf
 from tensorflow.contrib import learn
-
+import os
 import data_helpers
 from LRP.cnn import TextCNN
 from LRP.lrp import LRPManager
@@ -131,7 +131,7 @@ if "__main__" == __name__ :
                                   checkpoint_every=FLAGS.checkpoint_every,
                                   initW=initW
                                   )
-                todo = "lrp_test"
+                todo = "demo_sentence"
                 if todo == "lrp_test":
                     manager.show_lrp(sess, lrp, x_dev, y_dev, x_dev_text, split_no)
                     #manager.word_removing(sess, lrp, x_dev[:30], y_dev[:30])
