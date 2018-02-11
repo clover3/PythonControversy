@@ -3,7 +3,7 @@ import os.path
 
 
 def load_side_articles():
-    path = "C:\work\Code\Isidewith\\article_plain.pickle"
+    path ="data/side/article_plain.pickle"
     articles = pickle.load(open(path, "rb"))
     # dict of key -> content
     # content contains newline(\n)
