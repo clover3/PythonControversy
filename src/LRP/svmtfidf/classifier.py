@@ -32,6 +32,12 @@ class Model:
             for token in set(tokens):
                 self.df[token] += 1
 
+        self.idf_dict = dict()
+        for word in self.active_voca:
+            self.idf_dict[word] = math.log(self.N / self.df[token])
+        pickle.dump(self.idf_dict, open("idf{}.pickle".format(split_no), "wb"))
+        self.def_idf = math.log(self.N / 2)
+
         self.word2idx = dict()
         for idx, word in enumerate(self.active_voca):
             self.word2idx[word] = idx
@@ -111,6 +117,10 @@ class Model:
         avg_word_score = sum(per_word_score.values())/ len(per_word_score)
 
         def word_score(word):
+            idf = self.def_idf
+            if word in self.idf_dict:
+                idf = self.idf_dict[word]
+
             if word in per_word_score:
                 return per_word_score[word]
             else:
@@ -171,9 +181,9 @@ class Model:
             responses.append(candidates)
             rand_candi = self.rand_gen_phrase(tokens[i], len(answer_token), k)
             responsesF.append(rand_candi)
-            print("answer ---: "+answer)
-            for item in rand_candi:
-                print(item)
+            #print("answer ---: "+answer)
+            #for item in rand_candi:
+            #    print(item)
             def match(tokens):
                 systen_answer = " ".join([self.stemmer.stem(t) for t in tokens])
                 return systen_answer == answer_str
@@ -221,7 +231,7 @@ if __name__ == "__main__":
             #print("Accuracy on contrv data: {}".format(svm_phrase.accuracy(test_text, y_test)))
             result = []
             rand_result = []
-            for k in [10]:
+            for k in [1]:
                 rate, rate_rand = svm_phrase.test_phrase(test_text, y_test, answers, k)
                 result.append(rate)
                 rand_result.append(rate_rand)
