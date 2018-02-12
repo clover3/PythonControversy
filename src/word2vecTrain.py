@@ -26,7 +26,8 @@ def tokenize(sentence):
 
 def load_guardian_sentences():
     all_sentences = []
-    articles = pickle.load(open("2016articles.pickle","rb"))
+    articles = pickle.load(open("..\\2016articles.pickle","rb"))
+    print("Total of {}".format(len(articles)))
     for (id, short_url, body_text) in articles:
         sentences = body_text.split("\n")
         all_sentences.extend([tokenize(s) for s in sentences])

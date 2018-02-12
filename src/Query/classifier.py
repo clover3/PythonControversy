@@ -2,7 +2,9 @@ from nltk.tokenize import wordpunct_tokenize
 import collections
 from sklearn.svm import LinearSVC
 from sklearn.metrics import accuracy_score
-
+from nltk.stem.snowball import SnowballStemmer
+from sklearn.model_selection import StratifiedKFold
+import nltk
 import pickle
 import time
 import random
@@ -44,18 +46,21 @@ class BM25_dict():
 def load_stopwords():
     s = set()
     f = open("..\\..\\data\\stopwords.dat", "r")
-    for line in f.readline():
+    for line in f:
         s.add(line.strip())
     return s
 
 class Model:
-    def __init__(self):
+    def __init__(self, split_no):
         self.k1 = 1.2
         self.k2 = 10
         self.b = 0.75
         self.avgDocLen = 1000
         self.bm25_dict = BM25_dict()
         self.phrases= None # init at train
+        self.stemmer = SnowballStemmer("english", ignore_stopwords=True)
+        self.split_no = split_no
+
 
     # phrase : list[word]
     def bm25(self, doc_sparse, phrase):
@@ -75,6 +80,7 @@ class Model:
             doc_side = tf * (1+self.k1) / (tf + self.k1 * K)
             query_side = 1 * (1+self.k2) / (1 + self.k2)
             score = score + math.log(idf * doc_side * query_side + 0.0001)
+        print(score, phrase)
         return score
 
 
@@ -98,9 +104,14 @@ class Model:
             self.doc_sparse.append(doc_sparse)
         self.total_words = sum(voca.values())
 
-        candidate_phrase = self.generate_feature_phrases(self.tokened_corpus, voca, self.total_words)
-        self.phrases = list([p.split(" ") for p in candidate_phrase])
-        pickle.dump(self.phrases, open("phrase.pickle","wb"))
+        #candidate_phrase = self.generate_feature_phrases(self.tokened_corpus, voca, self.total_words)
+        #
+        self.phrases =[]
+        for p in data_helpers.load_phrase(self.split_no):
+            self.phrases.append(p.split(" "))
+
+        #self.phrases = list([p.split(" ") for p in candidate_phrase])
+        #pickle.dump(self.phrases, open("phrase.pickle","wb"))
 
         start = time.time()
         #X = pickle.load(open("trainX.pickle", "rb"))
@@ -116,7 +127,6 @@ class Model:
     def generate_feature_phrases(self, tokened_corpus, voca, total_words):
         n_docs = len(tokened_corpus)
         stopwords = load_stopwords()
-
         def all_stopword(phrase):
             return all([token in stopwords for token in phrase])
 
@@ -140,7 +150,9 @@ class Model:
 
         def meaningful(phrase):
             token_phrase = phrase.split(" ")
-            if all_stopword(phrase):
+            if token_phrase[0] in stopwords or token_phrase[-1] in stopwords:
+                return False
+            if all_stopword(token_phrase):
                 return False
             for i, word in enumerate(token_phrase):
                 try:
@@ -155,7 +167,6 @@ class Model:
                         return False
                 except ZeroDivisionError:
                     raise
-
             return True
 
 
@@ -234,15 +245,10 @@ class Model:
         else:
             suc.fail()
 
-    def gen_phrase(self, X, weight, phrase_len, k):
-        candidate = []
-        for i, phrase in enumerate(self.phrases):
-            score = weight[i]
-            if len(phrase) == phrase_len:
-                candidate.append((score, X[i], phrase))
-        candidate.sort(key=lambda x: x[0], reverse=True)
+    def gen_phrase(self, X, weight, phrase_len, k, text_tokens):
+        candidate = self.gen_pharse_all(weight, phrase_len, text_tokens)
         response = set()
-        for score, bm25, tokens in candidate:
+        for score, tokens in candidate:
             phrase = " ".join(tokens)
             if phrase not in response:
                 response.add(phrase)
@@ -250,7 +256,77 @@ class Model:
                 break
         return response
 
-    def test_phrase(self, data, y, answers):
+    def gen_pharse_all(self, weight, phrase_len, text_tokens):
+        pos_tags = nltk.pos_tag(text_tokens)
+
+        def find(phrase):
+            l = len(phrase)
+            for i in range(len(text_tokens)-l+1):
+                match = True
+                for j in range(l):
+                    if not text_tokens[i+j] == phrase[j]:
+                        match = False
+                        break
+                if match:
+                    return i
+            return -1
+
+        def exists(phrase):
+            l = len(phrase)
+            for i in range(len(text_tokens)-l+1):
+                match = True
+                for j in range(l):
+                    if not self.stemmer.stem(text_tokens[i+j]) == self.stemmer.stem(phrase[j]):
+                        match = False
+                        break
+                if match:
+                    return True
+            return False
+
+        def is_noun(phrase):
+            idx = find(phrase)
+            if idx >= 0 :
+                last_word_idx = idx+ len(phrase) - 1
+                return 'NN' in pos_tags[last_word_idx][1]
+            if idx < 0 :
+                return True
+
+        # noun known .
+        candidate = []
+        #phrase is set of tokens
+        cnt_exist = 0
+        not_noun = 0
+        for i, phrase in enumerate(self.phrases):
+            score = weight[i]
+            if score <= 0:
+                continue
+            if not exists(phrase):
+                cnt_exist = cnt_exist + 1
+                continue
+            if not is_noun(phrase):
+                not_noun = not_noun + 1
+                continue
+            if len(phrase) < 5 :
+                candidate.append((score, phrase))
+        candidate.sort(key=lambda x: x[0], reverse=True)
+        #print("Not exists : {} Not noun : {}".format(cnt_exist, not_noun))
+        return candidate
+
+    def pickle_candidate(self, data, y):
+        tokens = [self.tokenize(s) for s in data]
+        X = self.transform(tokens)
+        pickle.dump(X, open("testX.pickle", "wb"))
+        weights = np.multiply(X, self.clf.coef_[0])
+        scores = []
+        for i, answer in enumerate(answers):
+            if answer is None:
+                raise "Answer is None should not happen"
+                continue
+            scores.append(self.gen_pharse_all(weights[i], 999, tokens[i]))
+        pickle.dump(scores, open("middle.q.score{}.pickle".format(self.split_no), "wb"))
+
+
+    def test_phrase(self, data, y, answers, k):
         tokens = [self.tokenize(s) for s in data]
         #X = pickle.load(open("testX.pickle", "rb"))
         X = self.transform(tokens)
@@ -260,18 +336,25 @@ class Model:
         weights = np.multiply(X, self.clf.coef_[0])
 
         suc = FailCounter()
+        scores = []
         for i, answer in enumerate(answers):
-
             if y_pred[i] != y[i]:
-                continue
+                #print("Wrong")
+                ""
             if answer is None:
+                raise "Answer is None should not happen"
                 continue
             answer_token = answer.lower().split(" ")
+            answer_str = " ".join([self.stemmer.stem(t) for t in answer_token])
             j = max_topic[i]
-            candidates = self.gen_phrase(X[i], weights[i], len(answer_token), 10)
-
+            candidates = self.gen_phrase(X[i], weights[i], len(answer_token), k, tokens[i])
+            print("answer : "+ answer)
+            for c in candidates:
+                print(c)
+            scores.append(self.gen_pharse_all(weights[i], len(answer_token), tokens[i]))
             def match(tokens):
-                return set(tokens) == set(answer_token)
+                response_str = " ".join([self.stemmer.stem(t) for t in tokens])
+                return answer_str == response_str
 
             def correct(candidates):
                return any([match(c.split(" ")) for c in candidates])
@@ -280,6 +363,8 @@ class Model:
 
         print("accuracy : {}".format(suc.precision()))
         print("Total case : {}".format(suc.total()))
+        pickle.dump(scores, open("middle.q.score{}.pickle".format(self.split_no), "wb"))
+        return suc.precision()
 
 def fivefold(x_text, y):
     n_fold = 5
@@ -288,7 +373,6 @@ def fivefold(x_text, y):
     for test_idx in range(n_fold):
         mid1 = test_idx*fold_size
         mid2 = (test_idx+1)*fold_size
-
         train_x = x_text[:mid1] + x_text[mid2:]
         train_y = np.concatenate([y[:mid1],y[mid2:]], axis=0)
         dev_x = x_text[mid1:mid2]
@@ -298,6 +382,11 @@ def fivefold(x_text, y):
         print("Accuracy on train data: {}".format(svm_phrase.accuracy(train_x, train_y)))
         print("Accuracy on dev data: {}".format(svm_phrase.accuracy(dev_x, dev_y)))
 
+def get(x, indice):
+    res = []
+    for index in indice:
+        res.append(x[index])
+    return res
 
 
 if __name__ == "__main__":
@@ -307,25 +396,44 @@ if __name__ == "__main__":
     neg_path = "..\\LRP\\data\\guardianNC.txt"
     # Load data
     print("Loading data...")
-    validate = True
-    splits = data_helpers.data_split(pos_path, neg_path)
-    for split in splits:
+    validate = False
+
+    #splits = data_helpers.data_split(pos_path, neg_path)
+    splits = pickle.load(open("..\\LRP\\splits.pickle", "rb"))
+    for split_no, split in enumerate(splits):
         x_text, y, test_data = split
-        np.random.seed(10)
-        shuffle_indices = np.random.permutation(np.arange(len(y)))
-        x_text = list(np.array(x_text)[shuffle_indices])
-        y = y[shuffle_indices]
+        y = np.array(y)
         y = np.argmax(y, axis=1)
+        np.random.seed(10)
 
         if not validate:
-            svm_phrase = Model()
+            svm_phrase = Model(split_no)
             svm_phrase.train(x_text, y)
             #print("Accuracy on train data: {}".format(svm_phrase.accuracy(x_text, y)))
 
             answers = data_helpers.load_answer(test_data)
             linkl, test_text = zip(*test_data)
-            print("Accuracy on contrv data: {}".format(svm_phrase.accuracy(test_text, np.ones([len(test_text)]))))
-            svm_phrase.test_phrase(test_text, y, answers)
-
+            y_test = np.ones([len(test_text)])
+            print("Accuracy on contrv data: {}".format(svm_phrase.accuracy(test_text, y_test)))
+            result = []
+            #svm_phrase.pickle_candidate(test_text, y_test)
+            #continue
+            for k in [10,]:
+                rate = svm_phrase.test_phrase(test_text, y_test, answers, k)
+                result.append(rate)
+            print(result)
         else:
-            fivefold(x_text, y)
+            print("---------------")
+
+            skf = StratifiedKFold(n_splits=5)
+            accuracys = []
+            for train_index, test_index in skf.split(np.zeros(len(y)), y):
+                x_train = get(x_text, train_index)
+                x_test = get(x_text, test_index)
+                y_train, y_test = y[train_index], y[test_index]
+                print("total {}, pos={}".format(len(y_test), np.count_nonzero(y_test)))
+                svm_phrase = Model(split_no)
+                svm_phrase.train(x_train, y_train)
+                print("Accuracy on test data: {}".format(svm_phrase.accuracy(x_test, y_test)))
+            break
+        print("--- Done split-----")
