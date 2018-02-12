@@ -1,16 +1,23 @@
 import tensorflow as tf
+import numpy as np
+from tensorflow.contrib import learn
+
 import datetime
 import data_helpers
 import os
 import time
-from TopicCNN import TopicCNN
-import numpy as np
-from tensorflow.contrib import learn
+
 import pickle
 import collections
 import math
 from nltk.tokenize import wordpunct_tokenize
 from statistics import mean
+import nltk
+from nltk.stem.snowball import SnowballStemmer
+
+from clover_lib import *
+from TopicCNN import *
+from lrp_topic import *
 
 
 class BM25:
@@ -25,8 +32,8 @@ class BM25:
 
     def relevance(self, text, topics, split_no):
         bm_pickle = "bm25_{}.pickle".format(split_no)
-        if os.path.exists(bm_pickle):
-            return pickle.load(open(bm_pickle, "rb"))
+        #if os.path.exists(bm_pickle):
+        #    return pickle.load(open(bm_pickle, "rb"))
         phrases = [topic.split(" ") for topic in topics]
 
         tokened_corpus = [self.tokenize(s) for s in text]
@@ -72,8 +79,11 @@ class BM25:
                 scores.append(score)
             score_list.append(np.array(scores))
         result = np.array(score_list)
-        pickle.dump(result, open(bm_pickle, "wb"))
+        #pickle.dump(result, open(bm_pickle, "wb"))
         return result
+
+def get_model_path(id, epoch):
+    return "C:\\work\\Code\\PythonControversy\\src\\LRP\\runs\\{}\\checkpoints\\model-{}".format(id, epoch)
 
 class TopicManager():
     def __init__(self, num_checkpoints, dropout_keep_prob,
@@ -84,11 +94,106 @@ class TopicManager():
         self.num_epochs=num_epochs
         self.evaluate_every = evaluate_every
         self.checkpoint_every = checkpoint_every
+        self.max_document_length = 5000
 
+    def test_phrase(self, sess, FLAGS, vocab_processor, test_data, answer, split_no, k):
+
+        def transform(text):
+            return list(vocab_processor.transform(text))
+        links, list_test_text = zip(*test_data)
+        list_test_text = list([data_helpers.clean_str(x) for x in list_test_text])
+
+        topics = pickle.load(open("phrase3000_{}.pickle".format(split_no), "rb"))
+        bm25 = BM25()
+        t_vect = bm25.relevance(list_test_text, topics, split_no)
+        x_test = np.array(list(vocab_processor.fit_transform(list_test_text)))
+        y = np.array([[0,1]] * len(list_test_text))
+        print(x_test.shape)
+
+
+        print("voca len = {}".format(len(vocab_processor.vocabulary_)))
+        cnn = self.get_cnn(FLAGS, voca_size=len(vocab_processor.vocabulary_))
+        saver = tf.train.Saver(tf.global_variables())
+        saver.restore(sess, get_model_path(1518472645, 1000))
+        lrp_manager = LRPTopic(sess,
+             cnn=cnn,
+             sequence_length=self.max_document_length,
+             num_classes=FLAGS.num_classes,
+             batch_size=FLAGS.batch_size,
+             num_topics=FLAGS.num_topics,
+             )
+
+
+        feed_dict = {
+            lrp_manager.cnn.input_x: x_test,
+            lrp_manager.cnn.input_y: y,
+            lrp_manager.cnn.input_topic: t_vect,
+            lrp_manager.cnn.dropout_keep_prob: 1.0
+        }
+
+        accuracy = get_precision(sess, lrp_manager.cnn, x_test, y)
+        print("CONT prediction : {}".format(accuracy))
+
+
+        # rs : topic relevance
+        rs_pickle = "r_s{}.pickle".format(split_no)
+        if False and os.path.exists(rs_pickle):
+            r_s = pickle.load(open(rs_pickle, "rb"))
+        else:
+            print("Evaluate LRP")
+            r_s = lrp_manager.run(feed_dict)
+        pickle.dump(r_s, open(rs_pickle, "wb"))
+        stemmer = SnowballStemmer("english", ignore_stopwords=True)
+        count = FailCounter()
+        print(r_s.shape)
+        for i, batch in enumerate(r_s):
+            f_wrong = False
+            if answer[i] is None:
+                #print("No answer in text")
+                continue
+            #phrase_len = len(answer[i].split(" "))
+
+            answer_str = " ".join([stemmer.stem(token) for token in answer[i].lower().split(" ")])
+            print("Correct: " + answer[i] + "({})".format(answer_str))
+            candidates = collections.Counter()
+            for raw_index, value in np.ndenumerate(batch):
+                topic_idx = raw_index[0]
+                phrase = topics[topic_idx]
+                candidates[topic_idx] = abs(value)
+            match = False
+            for t_id, score in candidates.most_common(k):
+                phrase = topics[t_id]
+                sys_answer = " ".join([stemmer.stem(t) for t in phrase.split(" ")])
+                error = ""
+                if not phrase in list_test_text[i]:
+                    error="!!!"
+                bm25_score = t_vect[i, t_id]
+                print("{}{}:\t{} - {}".format(error, phrase, bm25_score, score))
+                if sys_answer == answer_str:
+                    match = True
+
+            if match:
+                count.suc()
+            else:
+                count.fail()
+        print("Precision : {}".format(count.precision()))
+
+    def get_cnn(self, FLAGS, voca_size):
+        return TopicCNN(
+            sequence_length=self.max_document_length,
+            num_classes=FLAGS.num_classes,
+            vocab_size=voca_size,
+            batch_size=FLAGS.batch_size,
+            embedding_size=FLAGS.embedding_dim,
+            filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
+            num_filters=FLAGS.num_filters,
+            num_topics=FLAGS.num_topics,
+            topic_lambda=FLAGS.topic_lambda,
+            l2_reg_lambda=FLAGS.l2_reg_lambda)
 
     def train(self, sess, x_text, y, split_no, FLAGS):
-        max_document_length = 5000
-        vocab_processor = learn.preprocessing.VocabularyProcessor(max_document_length)
+
+        vocab_processor = learn.preprocessing.VocabularyProcessor(self.max_document_length)
         #vocab_processor = pickle.load(open("vocabproc{}.pickle".format(split_no), "rb"))
 
         topics = pickle.load(open("phrase3000_{}.pickle".format(split_no), "rb"))
@@ -110,25 +215,13 @@ class TopicManager():
             text_x_shuffled.append(x_text[index])
         dev_sample_index = -1 * int(FLAGS.dev_sample_percentage * float(len(y)))
 
-
         x_train, x_dev = x_shuffled[:dev_sample_index], x_shuffled[dev_sample_index:]
         y_train, y_dev = y_shuffled[:dev_sample_index], y_shuffled[dev_sample_index:]
         t_train, t_dev = t_shuffled[:dev_sample_index], t_shuffled[dev_sample_index:]
         del x, y, x_shuffled, y_shuffled
 
         self.initW = data_helpers.load_word2vec(vocab_processor, FLAGS.embedding_dim)
-        cnn = TopicCNN(
-            sequence_length=x_train.shape[1],
-            num_classes=y_train.shape[1],
-            vocab_size=len(vocab_processor.vocabulary_),
-            batch_size=FLAGS.batch_size,
-            embedding_size=FLAGS.embedding_dim,
-            filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
-            num_filters=FLAGS.num_filters,
-            num_topics=FLAGS.num_topics,
-            topic_lambda=FLAGS.topic_lambda,
-            l2_reg_lambda=FLAGS.l2_reg_lambda)
-
+        cnn = self.get_cnn(FLAGS, voca_size=len(vocab_processor.vocabulary_))
         self.train_nn(sess, cnn, x_train, x_dev, t_train, y_train, y_dev, t_dev)
 
     def train_nn(self, sess, cnn, x_train, x_dev, t_train, y_train, y_dev, t_dev):

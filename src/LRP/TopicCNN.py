@@ -2,6 +2,20 @@ import tensorflow as tf
 import numpy as np
 
 
+def get_precision(sess, cnn, x, y):
+    feed_dict = {
+        cnn.input_x: x,
+        cnn.input_y: y,
+        cnn.dropout_keep_prob: 1.0
+    }
+    [accuracy] = sess.run(
+        [cnn.accuracy, ],
+        feed_dict)
+    return accuracy
+
+
+
+
 class TopicCNN(object):
     """
     A CNN for text classification.
@@ -77,7 +91,7 @@ class TopicCNN(object):
                 initializer=tf.contrib.layers.xavier_initializer())
             b = tf.Variable(tf.constant(0.1, shape=[num_topics]), name="b")
             self.topic_out = tf.nn.xw_plus_b(self.h_drop, W, b, name="scores")  #
-            self.topic_relu = tf.nn.relu(self.topic_out)
+            self.topic_prob = tf.nn.sigmoid(self.topic_out)
 
         # Final (unnormalized) scores and predictions
         with tf.name_scope("output"):
@@ -90,10 +104,12 @@ class TopicCNN(object):
             self.dense_b = b
             l2_loss += tf.nn.l2_loss(W)
             l2_loss += tf.nn.l2_loss(b)
-            self.scores = tf.nn.xw_plus_b(self.topic_out, W, b, name="scores") # [batch, num_class]
-            self.tp_scores = tf.nn.xw_plus_b(self.input_topic, W, b, name="topic_scores")
+            self.scores = tf.nn.xw_plus_b(self.topic_prob, W, b, name="scores") # [batch, num_class]
+            input_topic_prob = tf.nn.softmax(tf.nn.relu(self.input_topic))
+            self.tp_scores = tf.nn.xw_plus_b(input_topic_prob, W, b, name="topic_scores")
             #self.scores = tf.nn.xw_plus_b(self.h_drop, W, b, name="scores")  #
             self.predictions = tf.argmax(self.scores, 1, name="predictions") # [batch , 1]
+            self.tp_predictions = tf.argmax(self.tp_scores, 1, name="tp_predictions")  # [batch , 1]
 
 
         # Calculate mean cross-entropy loss
@@ -109,3 +125,5 @@ class TopicCNN(object):
         with tf.name_scope("accuracy"):
             correct_predictions = tf.equal(self.predictions, tf.argmax(self.input_y, 1))
             self.accuracy = tf.reduce_mean(tf.cast(correct_predictions, "float"), name="accuracy")
+            tp_correct = tf.equal(self.tp_predictions, tf.argmax(self.input_y, 1))
+            self.tp_accuracy = tf.reduce_mean(tf.cast(tp_correct, "float"), name="accuracy")
