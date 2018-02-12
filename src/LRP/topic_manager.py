@@ -10,6 +10,8 @@ import pickle
 import collections
 import math
 from nltk.tokenize import wordpunct_tokenize
+from statistics import mean
+
 
 class BM25:
     def __init__(self):
@@ -120,7 +122,6 @@ class TopicManager():
             num_classes=y_train.shape[1],
             vocab_size=len(vocab_processor.vocabulary_),
             batch_size=FLAGS.batch_size,
-            dropout_keep_prob=FLAGS.dropout_keep_prob,
             embedding_size=FLAGS.embedding_dim,
             filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
             num_filters=FLAGS.num_filters,
@@ -153,6 +154,7 @@ class TopicManager():
                 cnn.input_x: x_batch,
                 cnn.input_y: y_batch,
                 cnn.input_topic: t_batch,
+                cnn.dropout_keep_prob: self.dropout_keep_prob
             }
             _, step, loss, accuracy, \
             pred_loss, l2_loss, tp_loss = sess.run(
@@ -161,8 +163,9 @@ class TopicManager():
                  ],
                 feed_dict)
             time_str = datetime.datetime.now().isoformat()
-            loss_str = "loss:{0:.2f} pred={1:.2f} l2={2:.2f} topic={3:.2f}".format(loss, pred_loss, l2_loss, tp_loss)
-            print("\rTrain : step {}, loss {}, acc {}".format(step, loss_str, accuracy))
+            loss_str = "loss:{0:.4f} pred={1:.4f} l2={2:.4f} topic={3:.4f}".format(loss, pred_loss, l2_loss, tp_loss)
+            #print("\rTrain : step {}, loss {}, acc {}".format(step, loss_str, accuracy))
+            return accuracy, loss, pred_loss, l2_loss, tp_loss
 
         def dev_step(x_dev, y_dev, t_dev):
             """
@@ -171,22 +174,31 @@ class TopicManager():
             batches = data_helpers.batch_iter(
                 list(zip(x_dev, y_dev, t_dev)), self.batch_size, 1)
             accuracy_l = []
+            loss_l = []
             for batch in batches:
                 x_batch, y_batch, t_batch = zip(*batch)
                 feed_dict = {
                     cnn.input_x: x_batch,
                     cnn.input_y: y_batch,
                     cnn.input_topic: t_batch,
+                    cnn.dropout_keep_prob: 1.0,
                 }
                 step, loss, accuracy = sess.run(
                     [global_step, cnn.loss, cnn.accuracy],
                     feed_dict)
-                print("dev[batch] accuracy : {}".format(accuracy))
                 accuracy_l.append(accuracy * len(y_batch))
+                loss_l.append(loss * len(y_batch))
             accuracy = sum(accuracy_l) / len(y_dev)
+            loss = sum(loss_l) / len(y_dev)
             time_str = datetime.datetime.now().isoformat()
-            print("acc {:g}".format(accuracy))
-            return accuracy
+            return accuracy, loss
+
+        def train_info_str(info_list, current_step):
+            info = [float(sum(col))/len(col) for col in zip(*info_list)]
+            loss_str = "loss:{0:.4f} pred={1:.4f} l2={2:.4f} topic={3:.4f}".format(info[1], info[2], info[3], info[4])
+            return "Train : step {}, loss {}, acc {}".format(current_step, loss_str, info[0])
+
+
 
         batches = data_helpers.batch_iter(
             list(zip(x_train, y_train, t_train)), self.batch_size, self.num_epochs)
@@ -194,13 +206,18 @@ class TopicManager():
         num_batches_per_epoch = int((len(y_train) - 1) / self.batch_size) + 1
         evaluate_batch = self.evaluate_every * len(y_train) / self.batch_size
         print("batch per epoch {}".format(num_batches_per_epoch))
+        train_info_list = []
         for batch in batches:
             x_batch, y_batch, t_batch = zip(*batch)
-            train_step(x_batch, y_batch, t_batch)
+            train_info = train_step(x_batch, y_batch, t_batch)
+            train_info_list.append(train_info)
             current_step = tf.train.global_step(sess, global_step)
             if current_step % self.evaluate_every == 0:
-                print("\nEvaluation: step {}".format(current_step))
-                dev_step(x_dev, y_dev, t_dev)
+                train_str = train_info_str(train_info_list, current_step)
+                train_info_list = []
+
+                dev_acc, dev_loss = dev_step(x_dev, y_dev, t_dev)
+                print("{} dev_acc={} dev_loss={}".format(train_str, dev_acc, dev_loss))
             if current_step % self.checkpoint_every == 0:
                 path = saver.save(sess, checkpoint_prefix, global_step=current_step)
                 print("Saved model checkpoint to {}\n".format(path))

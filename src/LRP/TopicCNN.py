@@ -8,7 +8,7 @@ class TopicCNN(object):
     Uses an embedding layer, followed by a convolutional, max-pooling and softmax layer.
     """
     def __init__(
-      self, sequence_length, num_topics, num_classes, vocab_size, batch_size, dropout_keep_prob,
+      self, sequence_length, num_topics, num_classes, vocab_size, batch_size,
       embedding_size, filter_sizes, num_filters, l2_reg_lambda=0.0, topic_lambda=0.1):
         print("Building CNN")
         print("lambda: l2={} topic={}".format(l2_reg_lambda, topic_lambda))
@@ -16,7 +16,7 @@ class TopicCNN(object):
         self.input_x = tf.placeholder(tf.int32, [None, sequence_length], name="input_x")
         self.input_topic = tf.placeholder(tf.float32, [None, num_topics], name="input_topic")
         self.input_y = tf.placeholder(tf.float32, [None, num_classes], name="input_y")
-        self.dropout_keep_prob = dropout_keep_prob
+        self.dropout_keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob")
         self.batch_size = batch_size
         self.filters = []
 
@@ -24,7 +24,7 @@ class TopicCNN(object):
         l2_loss = tf.constant(0.0)
 
         # Embedding layer
-        with tf.device('/cpu:0'), tf.name_scope("embedding"):
+        with tf.name_scope("embedding"), tf.device('/device:GPU:0'):
             self.W = tf.Variable(
                 tf.random_uniform([vocab_size, embedding_size], -1.0, 1.0),
                 name="W")
@@ -77,8 +77,6 @@ class TopicCNN(object):
                 initializer=tf.contrib.layers.xavier_initializer())
             b = tf.Variable(tf.constant(0.1, shape=[num_topics]), name="b")
             self.topic_out = tf.nn.xw_plus_b(self.h_drop, W, b, name="scores")  #
-            losses = tf.nn.softmax_cross_entropy_with_logits(logits=self.topic_out, labels=self.input_topic)
-            topic_losses = tf.reduce_mean(losses)
             self.topic_relu = tf.nn.relu(self.topic_out)
 
         # Final (unnormalized) scores and predictions
@@ -93,6 +91,8 @@ class TopicCNN(object):
             l2_loss += tf.nn.l2_loss(W)
             l2_loss += tf.nn.l2_loss(b)
             self.scores = tf.nn.xw_plus_b(self.topic_out, W, b, name="scores") # [batch, num_class]
+            self.tp_scores = tf.nn.xw_plus_b(self.input_topic, W, b, name="topic_scores")
+            #self.scores = tf.nn.xw_plus_b(self.h_drop, W, b, name="scores")  #
             self.predictions = tf.argmax(self.scores, 1, name="predictions") # [batch , 1]
 
 
@@ -100,9 +100,10 @@ class TopicCNN(object):
         with tf.name_scope("loss"):
             losses = tf.nn.softmax_cross_entropy_with_logits(logits=self.scores, labels=self.input_y)
             self.pred_loss = tf.reduce_mean(losses)
-            self.l2_loss = l2_reg_lambda * l2_loss
-            self.tp_loss = topic_lambda * topic_losses
-            self.loss = self.pred_loss + self.l2_loss + self.tp_loss
+            self.l2_loss = l2_loss
+            losses = tf.losses.mean_squared_error(labels=self.scores, predictions=self.tp_scores)
+            self.tp_loss = tf.reduce_mean(losses)
+            self.loss = self.pred_loss + l2_reg_lambda * self.l2_loss + topic_lambda * self.tp_loss
 
         # Accuracy
         with tf.name_scope("accuracy"):
