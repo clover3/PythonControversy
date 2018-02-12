@@ -77,7 +77,15 @@ class TopicCNN(object):
                 initializer=tf.contrib.layers.xavier_initializer())
             b = tf.Variable(tf.constant(0.1, shape=[num_topics]), name="b")
             self.topic_out = tf.nn.xw_plus_b(self.h_drop, W, b, name="scores")  #
-            self.topic_relu = tf.nn.relu(self.topic_out)
+            self.topic_prob = tf.nn.sigmoid(self.topic_out)
+
+        with tf.name_scope("bm25"):
+            a = tf.get_variable(
+                "a",
+                shape=[num_topics,],
+                initializer=tf.contrib.layers.xavier_initializer())
+            b = tf.Variable(tf.constant(0.1, shape=[num_topics]), name="b")
+            self.input_topic_prob = tf.nn.sigmoid(tf.multiply(a,self.input_topic) + b)
 
         # Final (unnormalized) scores and predictions
         with tf.name_scope("output"):
@@ -90,22 +98,48 @@ class TopicCNN(object):
             self.dense_b = b
             l2_loss += tf.nn.l2_loss(W)
             l2_loss += tf.nn.l2_loss(b)
-            self.scores = tf.nn.xw_plus_b(self.topic_out, W, b, name="scores") # [batch, num_class]
-            self.tp_scores = tf.nn.xw_plus_b(self.input_topic, W, b, name="topic_scores")
-            #self.scores = tf.nn.xw_plus_b(self.h_drop, W, b, name="scores")  #
+            self.topic_drop = tf.nn.dropout(self.topic_prob, self.dropout_keep_prob)
+            self.scores = tf.nn.xw_plus_b(self.topic_drop, W, b, name="scores") # [batch, num_class]
+            self.tp_scores = tf.nn.xw_plus_b(self.input_topic_prob, W, b, name="topic_scores")
             self.predictions = tf.argmax(self.scores, 1, name="predictions") # [batch , 1]
+            self.tp_predictions = tf.argmax(self.tp_scores, 1, name="predictions")  # [batch , 1]
 
+        def max_loss(base, target):
+            return tf.reduce_max(tf.abs(target-base), axis=1)
 
         # Calculate mean cross-entropy loss
         with tf.name_scope("loss"):
             losses = tf.nn.softmax_cross_entropy_with_logits(logits=self.scores, labels=self.input_y)
-            self.pred_loss = tf.reduce_mean(losses)
+            self.nn_pred_loss = tf.reduce_mean(losses)
+            losses = tf.nn.softmax_cross_entropy_with_logits(logits=self.tp_scores, labels=self.input_y)
+            self.tp_pred_loss = tf.reduce_mean(losses)
+            self.pred_loss = self.nn_pred_loss
             self.l2_loss = l2_loss
-            losses = tf.losses.mean_squared_error(labels=self.scores, predictions=self.tp_scores)
-            self.tp_loss = tf.reduce_mean(losses)
+            z = tf.einsum("ab,bc->abc", self.topic_out, W)
+            z_both = -z[:,:,0] + z[:,:,1]
+            diff = tf.abs(self.topic_prob - self.input_topic_prob)
+
+            z_sum = tf.reduce_sum(z_both, axis=1)
+            unknown = tf.reduce_sum(tf.multiply(tf.abs(z_both), diff), axis=1) / z_sum
+            print(unknown.shape)
+            self.tp_loss = tf.reduce_mean(unknown)
             self.loss = self.pred_loss + l2_reg_lambda * self.l2_loss + topic_lambda * self.tp_loss
+
+        def binary(tensor):
+            return tf.cast(tensor + tf.constant(0.5, shape=[self.batch_size, num_topics]), tf.int32)
+
+        def accuracy(label, predictions):
+            correct_predictions = tf.equal(predictions, label)
+            return tf.reduce_mean(tf.cast(correct_predictions, "float"))
+
+        def precision(labels, predictions):
+            a = tf.cast(labels, tf.bool)
+            b = tf.cast(predictions, tf.bool)
+            judge = tf.logical_not(tf.logical_and(tf.logical_xor(a,b), b))
+            return tf.reduce_mean(tf.cast(judge, tf.float32))
 
         # Accuracy
         with tf.name_scope("accuracy"):
-            correct_predictions = tf.equal(self.predictions, tf.argmax(self.input_y, 1))
-            self.accuracy = tf.reduce_mean(tf.cast(correct_predictions, "float"), name="accuracy")
+            self.accuracy = accuracy(self.predictions, tf.argmax(self.input_y, 1))
+            self.tp_acc = accuracy(self.tp_predictions, tf.argmax(self.input_y, 1))
+            self.tp_prec = precision(predictions=binary(self.topic_prob), labels=binary(self.input_topic_prob))
