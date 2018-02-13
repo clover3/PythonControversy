@@ -105,7 +105,8 @@ class TopicCNN(object):
                 shape=[num_topics,],
                 initializer=tf.contrib.layers.xavier_initializer())
             b = tf.Variable(tf.constant(0.1, shape=[num_topics]), name="b")
-            self.input_topic_prob = tf.nn.sigmoid(tf.multiply(a,self.input_topic) + b)
+            #self.input_topic_prob = tf.nn.sigmoid(tf.multiply(a,self.input_topic) + b)
+            self.input_topic_prob = tf.nn.sigmoid(self.input_topic + b)
 
         # Final (unnormalized) scores and predictions
         with tf.name_scope("output"):
@@ -128,8 +129,8 @@ class TopicCNN(object):
             print_shape("self.scores:", self.scores)
 
             def dd(scores):
-                t1 = tf.constant(1.0, dtype=tf.float32, shape=[batch_size])
-                return tf.stack([t1 - scores, tf.reshape(scores, shape=t1.shape)], axis=1)
+                nc = tf.constant(0.5, dtype=tf.float32, shape=[batch_size])
+                return tf.stack([nc, tf.reshape(scores, shape=nc.shape)], axis=1)
 
             self.scores = dd(self.scores)
             self.tp_scores = dd(self.tp_scores)
@@ -147,7 +148,7 @@ class TopicCNN(object):
             self.nn_pred_loss = tf.reduce_mean(losses)
             losses = tf.nn.softmax_cross_entropy_with_logits(logits=self.tp_scores, labels=self.input_y)
             self.tp_pred_loss = tf.reduce_mean(losses)
-            self.pred_loss = self.nn_pred_loss
+            self.pred_loss = self.tp_pred_loss
             self.l2_loss = l2_loss
             z = tf.einsum("ab,bc->abc", self.topic_out, W)
             z_both = z[:,:,1]
