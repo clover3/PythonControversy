@@ -14,6 +14,12 @@ def get_precision(sess, cnn, x, y):
     return accuracy
 
 
+def print_shape(text, matrix):
+    print(text, end="")
+    print(matrix.shape)
+
+
+
 
 
 class TopicCNN(object):
@@ -113,10 +119,24 @@ class TopicCNN(object):
             l2_loss += tf.nn.l2_loss(W)
             l2_loss += tf.nn.l2_loss(b)
             self.topic_drop = tf.nn.dropout(self.topic_prob, self.dropout_keep_prob)
-            self.scores = tf.nn.xw_plus_b(self.topic_drop, W, b, name="scores") # [batch, num_class]
-            self.tp_scores = tf.nn.xw_plus_b(self.input_topic_prob, W, b, name="topic_scores")
+            #self.scores = tf.nn.xw_plus_b(self.topic_drop, W, b, name="scores") # [batch, num_class]
+            self.scores = tf.reduce_max(self.topic_prob, axis=1)
+            self.max_idx = tf.argmax(self.topic_prob, output_type=tf.int64, axis=1)
+
+            indice = tf.stack([tf.range(0,self.batch_size, dtype=tf.int64), self.max_idx], axis=1)
+            self.tp_scores = tf.gather_nd(self.input_topic_prob, indice)
+            print_shape("self.scores:", self.scores)
+
+            def dd(scores):
+                t1 = tf.constant(1.0, dtype=tf.float32, shape=[batch_size])
+                return tf.stack([t1 - scores, tf.reshape(scores, shape=t1.shape)], axis=1)
+
+            self.scores = dd(self.scores)
+            self.tp_scores = dd(self.tp_scores)
             self.predictions = tf.argmax(self.scores, 1, name="predictions") # [batch , 1]
+            print_shape("self.predictions:", self.predictions)
             self.tp_predictions = tf.argmax(self.tp_scores, 1, name="predictions")  # [batch , 1]
+            print_shape("self.tp_predictions:", self.tp_predictions)
 
         def max_loss(base, target):
             return tf.reduce_max(tf.abs(target-base), axis=1)
@@ -130,15 +150,19 @@ class TopicCNN(object):
             self.pred_loss = self.nn_pred_loss
             self.l2_loss = l2_loss
             z = tf.einsum("ab,bc->abc", self.topic_out, W)
-            z_both = -z[:,:,0] + z[:,:,1]
+            z_both = z[:,:,1]
             diff = tf.abs(self.topic_prob - self.input_topic_prob)
 
             z_sum = tf.reduce_sum(z_both, axis=1)
             unknown = tf.reduce_sum(tf.multiply(tf.abs(z_both), diff), axis=1) / z_sum
             print(unknown.shape)
-            self.tp_loss = tf.reduce_mean(unknown)
+            #self.tp_loss = tf.reduce_mean(unknown)
+            print(self.tp_predictions.shape)
+            print(self.predictions.shape)
+            self.tp_loss = self.tp_pred_loss
             self.loss = self.pred_loss + l2_reg_lambda * self.l2_loss + topic_lambda * self.tp_loss
 
+            self.top_topic_idx = self.max_idx
         def binary(tensor):
             return tf.cast(tensor + tf.constant(0.5, shape=[self.batch_size, num_topics]), tf.int32)
 
