@@ -1,23 +1,20 @@
-import tensorflow as tf
-import numpy as np
-from tensorflow.contrib import learn
-
+import collections
 import datetime
-import data_helpers
+import math
 import os
+import pickle
 import time
 
-import pickle
-import collections
-import math
-from nltk.tokenize import wordpunct_tokenize
-from statistics import mean
-import nltk
-from nltk.stem.snowball import SnowballStemmer
-
-from clover_lib import *
+import numpy as np
+import tensorflow as tf
 from TopicCNN import *
 from lrp_topic import *
+from nltk.stem.snowball import SnowballStemmer
+from nltk.tokenize import wordpunct_tokenize
+from tensorflow.contrib import learn
+
+import data_helpers
+from clover_lib import *
 
 
 class BM25:
@@ -156,6 +153,8 @@ class TopicManager():
             answer_str = " ".join([stemmer.stem(token) for token in answer[i].lower().split(" ")])
             print("Correct: " + answer[i] + "({})".format(answer_str))
             candidates = collections.Counter()
+            top_idx = np.argmax(batch)
+            print("Best : {}) {}".format(top_idx, topics[top_idx]))
             for raw_index, value in np.ndenumerate(batch):
                 topic_idx = raw_index[0]
                 phrase = topics[topic_idx]
@@ -168,7 +167,7 @@ class TopicManager():
                 if not phrase in list_test_text[i]:
                     error="!!!"
                 bm25_score = t_vect[i, t_id]
-                print("{}{}:\t{} - {}".format(error, phrase, bm25_score, score))
+                print("{} {}){}:\t{} - {}".format(error, t_id, phrase, bm25_score, score))
                 if sys_answer == answer_str:
                     match = True
 

@@ -22,7 +22,7 @@ class LRPTopic(object):
                 if 1 == c:
                     r_k[i, c] = scores[i, c]
                 else:
-                    r_k[i, c] = 0#-scores[i, c]
+                    r_k[i, c] = -scores[i, c]
         # topic neurons : [batch , filter_size]
         print("Dense W shape:{}".format(dense_W.shape))
         z_sk = np.zeros(shape=[input_batch_size, self.num_topics, self.num_classes])
@@ -45,13 +45,13 @@ class LRPTopic(object):
     def run(self, feed_dict):
         scores, input_topic, tp_loss,\
         dense_W, dense_b, topic_output,\
-        accuracy, tp_accuracy = self.sess.run(
+        accuracy, = self.sess.run(
             [self.cnn.scores, self.cnn.input_topic, self.cnn.tp_loss,
              self.cnn.dense_W, self.cnn.dense_b, self.cnn.topic_prob,
-             self.cnn.accuracy, self.cnn.tp_accuracy,
+             self.cnn.accuracy,
              ],
             feed_dict)
-        print("Accuracy={} TpAccuracy={} Topic loss : {}".format(accuracy, tp_accuracy, tp_loss))
+        print("Accuracy={}  Topic loss : {}".format(accuracy, tp_loss))
         return self.eval_r(
             scores=scores,
             dense_W=dense_W,

@@ -1,13 +1,15 @@
 #! /usr/bin/env python
 
+import os
 import pickle
 import random
 
 import numpy as np
 import tensorflow as tf
-import os
-import data_helpers
 from topic_manager import TopicManager
+
+import data_helpers
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 # Parameters
 # ==================================================
@@ -33,7 +35,7 @@ tf.flags.DEFINE_integer("evaluate_every", 48, "Evaluate model on dev set after t
 tf.flags.DEFINE_integer("checkpoint_every", 1000, "Save model after this many steps (default: 100)")
 tf.flags.DEFINE_integer("num_checkpoints", 2, "Number of checkpoints to store (default: 5)")
 # Misc Parameters
-tf.flags.DEFINE_boolean("allow_soft_placement", False, "Allow device soft device placement")
+tf.flags.DEFINE_boolean("allow_soft_placement", True, "Allow device soft device placement")
 tf.flags.DEFINE_boolean("log_device_placement", False, "Log placement of ops on devices")
 
 FLAGS = tf.flags.FLAGS
