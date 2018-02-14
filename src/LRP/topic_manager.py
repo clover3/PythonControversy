@@ -284,13 +284,16 @@ class TopicManager():
                  ],
                 feed_dict)
 
-            topic_debug = ""
+            reason_count = collections.Counter()
             for i in range(self.batch_size):
-                topic_debug += " " + topics[top_topic_idx[i]]
-            print(topic_debug)
+                if np.argmax(y_batch[i]) == 1:
+                    reason_count[top_topic_idx[i]] += 1
+            major = reason_count.most_common(1)[0][1]
+            total = sum(reason_count.values())
             time_str = datetime.datetime.now().isoformat()
+            diversity = major / total
             #print("\rTrain : step {}, loss {}, acc {}".format(step, loss_str, accuracy))
-            return accuracy, loss, pred_loss, l2_loss, tp_loss, tp_prec, nn_pred_loss, tp_pred_loss, tp_acc
+            return accuracy, loss, pred_loss, l2_loss, tp_loss, tp_prec, nn_pred_loss, tp_pred_loss, tp_acc, diversity
 
         def dev_step(x_dev, y_dev, t_dev):
             """
@@ -327,7 +330,8 @@ class TopicManager():
                         + "tp_loss:{0:.5f} ".format(info[4]) \
                         + "tp_prec:{0:.6f} ".format(info[5]) \
                         + "tp_acc:{0:.2f} ".format(info[8]) \
-                        + "acc:{0:.2f}".format(info[0])
+                        + "acc:{0:.2f} ".format(info[0]) \
+                        + "diversity:{0:.2f} ".format(info[9])
             #loss_str = "loss:{0:.4f} pred={1:.4f}[{5:.4f},{6:.4f}] l2={2:.4f} topic={3:.5f} tp_prec={4:.2f} " \
             #           "tp_acc{7:0.5".format(info[1], info[2], info[3], info[4], info[5], info[6], info[7])
             return "Train : step {}, {}, acc {}".format(current_step, info_str, info[0])
