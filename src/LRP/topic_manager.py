@@ -29,8 +29,8 @@ class BM25:
 
     def relevance(self, text, topics, split_no):
         bm_pickle = "bm25_{}.pickle".format(split_no)
-        #if os.path.exists(bm_pickle):
-        #    return pickle.load(open(bm_pickle, "rb"))
+        if os.path.exists(bm_pickle):
+            return pickle.load(open(bm_pickle, "rb"))
         phrases = [topic.split(" ") for topic in topics]
 
         tokened_corpus = [self.tokenize(s) for s in text]
@@ -76,7 +76,7 @@ class BM25:
                 scores.append(score)
             score_list.append(np.array(scores))
         result = np.array(score_list)
-        #pickle.dump(result, open(bm_pickle, "wb"))
+        pickle.dump(result, open(bm_pickle, "wb"))
         return result
 
 def get_model_path(id, epoch):
@@ -111,7 +111,7 @@ class TopicManager():
         print("voca len = {}".format(len(vocab_processor.vocabulary_)))
         cnn = self.get_cnn(FLAGS, voca_size=len(vocab_processor.vocabulary_))
         saver = tf.train.Saver(tf.global_variables())
-        saver.restore(sess, get_model_path(1518472645, 1000))
+        saver.restore(sess, get_model_path(1518489339, 2000))
         lrp_manager = LRPTopic(sess,
              cnn=cnn,
              sequence_length=self.max_document_length,
@@ -201,13 +201,13 @@ class TopicManager():
         y = np.array(y)
         bm25 = BM25()
 
-        topics = bm25.relevance(x_text, topics, split_no)
+        t = bm25.relevance(x_text, topics, split_no)
 
         np.random.seed(10)
         shuffle_indices = np.random.permutation(np.arange(len(y)))
         x_shuffled = x[shuffle_indices]
         y_shuffled = y[shuffle_indices]
-        t_shuffled = topics[shuffle_indices]
+        t_shuffled = t[shuffle_indices]
         # Build vocabulary
 
         text_x_shuffled = []
@@ -222,9 +222,10 @@ class TopicManager():
 
         self.initW = data_helpers.load_word2vec(vocab_processor, FLAGS.embedding_dim)
         cnn = self.get_cnn(FLAGS, voca_size=len(vocab_processor.vocabulary_))
-        self.train_nn(sess, cnn, x_train, x_dev, t_train, y_train, y_dev, t_dev)
+        self.train_nn(sess, cnn, x_train, x_dev, t_train, y_train, y_dev, t_dev, topics)
 
-    def train_nn(self, sess, cnn, x_train, x_dev, t_train, y_train, y_dev, t_dev):
+    def train_nn(self, sess, cnn, x_train, x_dev, t_train, y_train, y_dev, t_dev, topics):
+
         # Define Training procedure
         global_step = tf.Variable(0, name="global_step", trainable=False)
         optimizer = tf.train.AdamOptimizer(1e-3)
@@ -274,12 +275,19 @@ class TopicManager():
             }
             _, step, loss, accuracy, tp_prec, tp_acc, \
             nn_pred_loss, tp_pred_loss,\
+            top_topic_idx, \
             pred_loss, l2_loss, tp_loss = sess.run(
                 [self.train_op, global_step, cnn.loss, cnn.accuracy, cnn.tp_prec, cnn.tp_acc,
                  cnn.nn_pred_loss, cnn.tp_pred_loss,
+                 cnn.top_topic_idx,
                  cnn.pred_loss, cnn.l2_loss, cnn.tp_loss
                  ],
                 feed_dict)
+
+            topic_debug = ""
+            for i in range(self.batch_size):
+                topic_debug += " " + topics[top_topic_idx[i]]
+            print(topic_debug)
             time_str = datetime.datetime.now().isoformat()
             #print("\rTrain : step {}, loss {}, acc {}".format(step, loss_str, accuracy))
             return accuracy, loss, pred_loss, l2_loss, tp_loss, tp_prec, nn_pred_loss, tp_pred_loss, tp_acc

@@ -22,7 +22,7 @@ class LRPTopic(object):
                 if 1 == c:
                     r_k[i, c] = scores[i, c]
                 else:
-                    r_k[i, c] = -scores[i, c]
+                    r_k[i, c] = 0# -scores[i, c]
         # topic neurons : [batch , filter_size]
         print("Dense W shape:{}".format(dense_W.shape))
         z_sk = np.zeros(shape=[input_batch_size, self.num_topics, self.num_classes])
