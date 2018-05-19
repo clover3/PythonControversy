@@ -1,12 +1,12 @@
 #! /usr/bin/env python
 
+import os
 import pickle
 import random
-import os
+
 import numpy as np
 import tensorflow as tf
-from tensorflow.contrib import learn
-import os
+
 import data_helpers
 from LRP.cnn import TextCNN
 from LRP.lrp import LRPManager
@@ -131,7 +131,7 @@ if "__main__" == __name__ :
                                   checkpoint_every=FLAGS.checkpoint_every,
                                   initW=initW
                                   )
-                todo = "demo_sentence"
+                todo = "phrase_test"
                 if todo == "lrp_test":
                     manager.show_lrp(sess, lrp, x_dev, y_dev, x_dev_text, split_no)
                     #manager.word_removing(sess, lrp, x_dev[:30], y_dev[:30])
@@ -143,7 +143,7 @@ if "__main__" == __name__ :
                     answer = data_helpers.load_answer(test_data)
                     pickle.dump(answer, open("answer{}.pickle".format(split_no), "wb"))
                     summary = []
-                    for k in [10,]:
+                    for k in [1,]:
                         rate = manager.test_phrase(sess, lrp, test_data, answer, vocab_processor, split_no, k)
                         summary.append("{}\t{}".format(k, rate))
                     for line in summary:

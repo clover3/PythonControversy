@@ -1,5 +1,6 @@
-import pickle
 import collections
+import pickle
+
 from nltk.stem.snowball import SnowballStemmer
 
 stemmer = SnowballStemmer('english', ignore_stopwords=True)
@@ -13,7 +14,7 @@ def stem(word):
 
 ## CNN : Stemed phrase, value
 ## LinSVM : not stemmed ranked phrase
-mode = "CNN"
+mode = "LinSVM"
 
 def stem_phrase(phrase):
     return " ".join([stem(token) for token in phrase.split(" ")])
@@ -63,7 +64,7 @@ def merge_eval(pickle_form, split_no):
         #print("Suc@{}\t{}".format(k, suc/ total))
     return score
 
-pickle_form = "middle_cnn_5\\middle.score{}.pickle"
+pickle_form = "middle_cnn_5\\middle.lm.score{}.pickle"
 
 runs = []
 for split_no in range(3):

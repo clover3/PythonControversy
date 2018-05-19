@@ -1,17 +1,20 @@
-from nltk.tokenize import wordpunct_tokenize
 import collections
-from sklearn.svm import LinearSVC
-from sklearn.metrics import accuracy_score
-from nltk.stem.snowball import SnowballStemmer
-from sklearn.model_selection import StratifiedKFold
-import nltk
-import pickle
-import time
-import random
 import math
+import pickle
+import random
+import time
+
+import nltk
 import numpy as np
-from clover_lib import *
+from nltk.stem.snowball import SnowballStemmer
+from nltk.tokenize import wordpunct_tokenize
+from sklearn.metrics import accuracy_score
+from sklearn.model_selection import StratifiedKFold
+from sklearn.svm import LinearSVC
+
 import data_helpers
+from clover_lib import *
+
 
 class BM25_dict():
     def __init__(self):
@@ -75,12 +78,11 @@ class Model:
 
         score = 0
         for word in phrase:
-            idf = (self.n_docs - self.df[word]+0.5)/(self.df[word]+0.5)
+            idf = max(math.log((self.n_docs - self.df[word]+0.5)/(self.df[word]+0.5)), 1)
             tf = get_tf(word)
             doc_side = tf * (1+self.k1) / (tf + self.k1 * K)
             query_side = 1 * (1+self.k2) / (1 + self.k2)
             score = score + math.log(idf * doc_side * query_side + 0.0001)
-        print(score, phrase)
         return score
 
 
@@ -197,6 +199,42 @@ class Model:
         print("filtered phrase {}".format(len(candidate_phrase)))
         return set(candidate_phrase)
 
+    def why_wrong(self, data, y):
+        def to_text(integer):
+            if integer == 0:
+                return "NC"
+            else:
+                return "C"
+
+        def text_wrap(text):
+            line_len = 80
+            cursor = 0
+            wraped_text = ""
+            for i, c in enumerate(text):
+                cursor += 1
+                if c == ' ' and cursor > line_len:
+                    wraped_text += "\n"
+                    cursor = 0
+                wraped_text += c
+            return wraped_text
+
+        def get_top_phrase(x):
+            phrases = ""
+            rank = np.flip(np.argsort(x), axis=0)
+            for i in range(5):
+                idx = rank[i]
+                phrases += " ".join(self.phrases[idx]) + "({}*{}) ".format(x[idx], self.clf.coef_[0][idx])
+            return phrases
+
+        tokens = [self.tokenize(s) for s in (data)]
+        X = self.transform(tokens)
+        y_pred = self.clf.predict(X)
+        for i, text in enumerate(data):
+            if y_pred[i] == y[i] and y[i] == 1 :
+                print("Answer={} . Response={}".format(to_text(y[i]), to_text(y_pred[i])))
+                print("Highest phrase : {}".format(get_top_phrase(X[i])))
+                print(text_wrap(text))
+
     def accuracy(self, x, y):
         return accuracy_score(y, self.predict(x))
 
@@ -229,6 +267,7 @@ class Model:
                     rel = 0
                 x.append(rel)
                 #history[phrase] = rel
+
             X.append(np.array(x))
         X = np.array(X)
         return X
@@ -338,9 +377,6 @@ class Model:
         suc = FailCounter()
         scores = []
         for i, answer in enumerate(answers):
-            if y_pred[i] != y[i]:
-                #print("Wrong")
-                ""
             if answer is None:
                 raise "Answer is None should not happen"
                 continue
@@ -396,7 +432,7 @@ if __name__ == "__main__":
     neg_path = "..\\LRP\\data\\guardianNC.txt"
     # Load data
     print("Loading data...")
-    validate = False
+    validate = True
 
     #splits = data_helpers.data_split(pos_path, neg_path)
     splits = pickle.load(open("..\\LRP\\splits.pickle", "rb"))
@@ -435,5 +471,6 @@ if __name__ == "__main__":
                 svm_phrase = Model(split_no)
                 svm_phrase.train(x_train, y_train)
                 print("Accuracy on test data: {}".format(svm_phrase.accuracy(x_test, y_test)))
+                svm_phrase.why_wrong(x_text, y_test)
             break
         print("--- Done split-----")

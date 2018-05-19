@@ -1,17 +1,19 @@
-from nltk.tokenize import wordpunct_tokenize
 import collections
-from sklearn.svm import LinearSVC
-from sklearn.metrics import accuracy_score
-from nltk.stem.snowball import SnowballStemmer
-from sklearn.model_selection import StratifiedKFold
-import nltk
-
+import math
 import pickle
 import random
-import math
+
+import nltk
 import numpy as np
-from clover_lib import *
+from nltk.stem.snowball import SnowballStemmer
+from nltk.tokenize import wordpunct_tokenize
+from sklearn.metrics import accuracy_score
+from sklearn.model_selection import StratifiedKFold
+from sklearn.svm import LinearSVC
+
 import data_helpers
+from clover_lib import *
+
 
 class Model:
     def __init__(self, x, y, split_no):
@@ -87,6 +89,8 @@ class Model:
 
     def accuracy(self, x, y):
         return accuracy_score(y, self.predict(x))
+
+
 
     def rand_gen_phrase(self, text_tokens, phrase_len, k):
         pos_tags = nltk.pos_tag(text_tokens)
@@ -214,7 +218,7 @@ if __name__ == "__main__":
 
     # Load data
     print("Loading data...")
-    validate = False
+    validate = True
     splits = pickle.load(open("..\\splits.pickle", "rb"))
     for split_no, split in enumerate(splits):
         x_text, y, test_data = split
@@ -243,8 +247,10 @@ if __name__ == "__main__":
         else:
             print("---------------")
             skf = StratifiedKFold(n_splits=5)
+
             accuracys = []
             for train_index, test_index in skf.split(np.zeros(len(y)), y):
+                pickle.dump(test_index, open("test_index_svm.pickle", "wb"))
                 x_train = get(x_text, train_index)
                 x_test = get(x_text, test_index)
                 y_train, y_test = y[train_index], y[test_index]
