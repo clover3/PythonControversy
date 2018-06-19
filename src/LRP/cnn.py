@@ -61,13 +61,13 @@ class TextCNN(object):
                     strides=[1, 1, 1, 1],
                     padding='VALID',
                     name="pool")
-                #arg = tf.argmax(h, axis=1)
-                #arg_list.append(arg)
+                arg = tf.argmax(h, axis=1)
+                arg_list.append(arg)
                 pooled_outputs.append(pooled)
 
         # Combine all the pooled features
         num_filters_total = num_filters * len(filter_sizes)
-        #pooledArg = tf.concat(arg_list, 2)
+        self.pooledArg = tf.concat(arg_list, 2)
         self.h_pool = tf.concat(pooled_outputs, 3)
         self.h_pool_flat = tf.reshape(self.h_pool, [-1, num_filters_total])
         # Add dropout

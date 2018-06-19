@@ -62,7 +62,7 @@ if "__main__" == __name__ :
         x_text, y, test_data = splits[split_no]
 
         # Build vocabulary
-        max_document_length = 5000
+        max_document_length = 1000
         #vocab_processor = learn.preprocessing.VocabularyProcessor(max_document_length)
         vocab_processor = pickle.load(open("vocabproc{}.pickle".format(split_no), "rb"))
         x = np.array(list(vocab_processor.fit_transform(x_text)))

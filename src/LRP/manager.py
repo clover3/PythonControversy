@@ -510,6 +510,7 @@ class Manager():
             #model_path = get_model_path(1517029400, 200)
             model_path = get_model_path(1517194730, 300)
 
+        model_path = get_model_path(split_no, 700)
         saver.restore(sess, model_path)
 
         def transform(text):
@@ -567,10 +568,10 @@ class Manager():
 
         stemmer = SnowballStemmer("english", ignore_stopwords=True)
         rt_pickle = "r_t{}.pickle".format(split_no)
-        if os.path.exists(rt_pickle):
-            r_t = pickle.load(open(rt_pickle, "rb"))
-        else:
-            r_t = lrp_manager.run(feed_dict)
+        #if os.path.exists(rt_pickle):
+        #    r_t = pickle.load(open(rt_pickle, "rb"))
+        #else:
+        r_t = lrp_manager.run(feed_dict)
         pickle.dump(r_t, open(rt_pickle, "wb"))
         count = FailCounter()
         rand_count = FailCounter()
@@ -606,9 +607,9 @@ class Manager():
                     is_noun = 'NN' in pos_tags[index+phrase_len-1][1]
                     s = sum(window)
                     text = " ".join(text_tokens[index:index+phrase_len])
-                    if text in candidate_phrase and is_noun:
+                    #if text in candidate_phrase and is_noun:
                     #if is_noun:
-                        candidates.append((s, index, index+phrase_len, window))
+                    candidates.append((s, index, index+phrase_len, window))
             candidates.sort(key=lambda x:x[0], reverse=True)
             ranking_dict = collections.Counter()
             info_dict = dict()

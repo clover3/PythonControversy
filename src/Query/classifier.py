@@ -238,6 +238,9 @@ class Model:
     def accuracy(self, x, y):
         return accuracy_score(y, self.predict(x))
 
+    def cf(self, x, y):
+        return np.equal(self.predict(x), y)
+
     @staticmethod
     def doc2sparse(tokens):
         sparse = collections.Counter()
@@ -432,7 +435,7 @@ if __name__ == "__main__":
     neg_path = "..\\LRP\\data\\guardianNC.txt"
     # Load data
     print("Loading data...")
-    validate = True
+    validate = False
 
     #splits = data_helpers.data_split(pos_path, neg_path)
     splits = pickle.load(open("..\\LRP\\splits.pickle", "rb"))
@@ -451,6 +454,10 @@ if __name__ == "__main__":
             linkl, test_text = zip(*test_data)
             y_test = np.ones([len(test_text)])
             print("Accuracy on contrv data: {}".format(svm_phrase.accuracy(test_text, y_test)))
+            cfs = []
+            cfs.append(svm_phrase.cf(test_text, y_test))
+            pickle.dump(cfs, open("cf_phrase_cont_{}.pickle".format(split_no), "wb"))
+
             result = []
             #svm_phrase.pickle_candidate(test_text, y_test)
             #continue
@@ -463,6 +470,7 @@ if __name__ == "__main__":
 
             skf = StratifiedKFold(n_splits=5)
             accuracys = []
+            cfs = []
             for train_index, test_index in skf.split(np.zeros(len(y)), y):
                 x_train = get(x_text, train_index)
                 x_test = get(x_text, test_index)
@@ -471,6 +479,7 @@ if __name__ == "__main__":
                 svm_phrase = Model(split_no)
                 svm_phrase.train(x_train, y_train)
                 print("Accuracy on test data: {}".format(svm_phrase.accuracy(x_test, y_test)))
-                svm_phrase.why_wrong(x_text, y_test)
-            break
+                #svm_phrase.why_wrong(x_text, y_test)
+                cfs.append(svm_phrase.cf(x_test, y_test))
+            pickle.dump(cfs, open("cf_phrase_{}.pickle".format(split_no), "wb"))
         print("--- Done split-----")

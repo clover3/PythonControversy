@@ -30,6 +30,7 @@ class Model:
 
         self.stemmer = SnowballStemmer("english", ignore_stopwords=True)
         self.good_phrase = data_helpers.load_phrase(split_no)
+        self.textrank = pickle.load(open("..\\..\\keyphrase\\textrank_{}.pickle".format(split_no), "rb"))
         self.split_no = split_no
 
     def tokenize(self, str):
@@ -119,7 +120,11 @@ class Model:
     def accuracy(self, x, y):
         return accuracy_score(y, self.predict(x))
 
-    def gen_phrase(self, text, k):
+    def cf(self, x, y):
+        return np.equal(self.predict(x), y)
+
+
+    def gen_phrase(self, text, k, textrank):
         text_tokens = self.tokenize(text)
         pos_tags = nltk.pos_tag(text_tokens)
 
@@ -140,15 +145,20 @@ class Model:
 
         candidate = collections.Counter()
         text_len = len(text_tokens)
-        for phrase_len in range(1,5):
+        for phrase_len in range(1,3):
             for idx in range(text_len-phrase_len):
                 sub_tokens = text_tokens[idx : idx+phrase_len]
                 last_idx = idx + phrase_len - 1
 
                 phrase = " ".join(sub_tokens)
                 if phrase in self.good_phrase and is_noun(last_idx):
+                #if is_noun(last_idx):
+                #if True:
                     score = sum(list([word_score(token) for token in sub_tokens]))
                     candidate[phrase] += score
+        for phrase, score in candidate.items():
+            candidate[phrase] = score #* textrank[phrase]
+
         response = []
         for phrase, score in candidate.most_common():
             if phrase not in response:
@@ -175,7 +185,7 @@ class Model:
             answer_token = answer.lower().split(" ")
 
             answer_str = " ".join([self.stemmer.stem(t) for t in answer_token])
-            candidates = self.gen_phrase(data[i], k)
+            candidates = self.gen_phrase(data[i], k, self.textrank[i])
             responses.append(candidates)
             def match(tokens):
                 systen_answer = " ".join([self.stemmer.stem(t) for t in tokens])
@@ -217,8 +227,12 @@ if __name__ == "__main__":
             linkl, test_text = zip(*test_data)
             y_test = np.ones([len(test_text)])
             print("Accuracy on contrv data: {}".format(LM.accuracy(test_text, y_test)))
+            cfs = []
+            cfs.append(LM.cf(test_text, y_test))
+            pickle.dump(cfs, open("cf_lm_cont_{}.pickle".format(split_no), "wb"))
+
             result = []
-            for k in [1]:
+            for k in [30]:
                 rate = LM.test_phrase(test_text, y_test, answers, k)
                 result.append(rate)
 
@@ -227,6 +241,7 @@ if __name__ == "__main__":
             print("---------------")
             skf = StratifiedKFold(n_splits=5)
             accuracys = []
+            cfs = []
             for train_index, test_index in skf.split(np.zeros(len(y)), y):
                 x_train = get(x_text, train_index)
                 x_test = get(x_text, test_index)
@@ -235,5 +250,7 @@ if __name__ == "__main__":
                 LM = Model(x_train, y_train, split_no)
                 LM.train(x_train, y_train)
                 print("Accuracy on test data: {}".format(LM.accuracy(x_test, y_test)))
-            break
+                cfs.append(LM.cf(x_test, y_test))
+            pickle.dump(cfs, open("lm_cf_{}.pickle".format(split_no), "wb"))
+
         print("--- Done split-----")

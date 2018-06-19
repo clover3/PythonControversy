@@ -105,6 +105,7 @@ class keyphrase_tfidf:
                 print(candi)
 
 
+
 if "__main__" == __name__ :
     random.seed(0)
 
@@ -119,5 +120,5 @@ if "__main__" == __name__ :
         model.train(x_text)
         answers = data_helpers.load_answer(test_data)
         linkl, test_text = zip(*test_data)
-        #model.analyze(test_text, answers)
+        model.analyze(test_text, answers)
 
